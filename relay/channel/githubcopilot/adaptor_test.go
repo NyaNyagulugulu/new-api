@@ -49,6 +49,87 @@ func TestSetupRequestHeaderUsesEndpointCredential(t *testing.T) {
 	assert.NotContains(t, headers.Get("Authorization"), "profile_id")
 }
 
+func TestSetupRequestHeaderAddsVisionHeaderForImageRequests(t *testing.T) {
+	const imageData = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+	tests := []struct {
+		name    string
+		request dto.Request
+		want    bool
+	}{
+		{
+			name: "text only",
+			request: &dto.GeneralOpenAIRequest{Messages: []dto.Message{{
+				Role:    "user",
+				Content: "describe this request",
+			}}},
+		},
+		{
+			name: "openai chat image",
+			request: &dto.GeneralOpenAIRequest{Messages: []dto.Message{{
+				Role: "user",
+				Content: []any{map[string]any{
+					"type": "image_url",
+					"image_url": map[string]any{
+						"url": "data:image/png;base64," + imageData,
+					},
+				}},
+			}}},
+			want: true,
+		},
+		{
+			name: "openai responses image",
+			request: &dto.OpenAIResponsesRequest{
+				Input: json.RawMessage(`[{"role":"user","content":[{"type":"input_image","image_url":"data:image/png;base64,` + imageData + `"}]}]`),
+			},
+			want: true,
+		},
+		{
+			name: "claude image",
+			request: &dto.ClaudeRequest{Messages: []dto.ClaudeMessage{{
+				Role: "user",
+				Content: []any{map[string]any{
+					"type": "image",
+					"source": map[string]any{
+						"type":       "base64",
+						"media_type": "image/png",
+						"data":       imageData,
+					},
+				}},
+			}}},
+			want: true,
+		},
+		{
+			name: "gemini image",
+			request: &dto.GeminiChatRequest{Contents: []dto.GeminiChatContent{{
+				Parts: []dto.GeminiPart{{
+					InlineData: &dto.GeminiInlineData{MimeType: "image/png", Data: imageData},
+				}},
+			}}},
+			want: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			adaptor := &Adaptor{
+				endpoint: &copilot.Endpoint{Type: "openai", BaseURL: "https://api.githubcopilot.com"},
+				protocol: copilot.ProtocolOpenAIChat,
+			}
+			info := &relaycommon.RelayInfo{Request: test.request}
+			headers := http.Header{}
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+			require.NoError(t, adaptor.SetupRequestHeader(ctx, &headers, info))
+			if test.want {
+				assert.Equal(t, "true", headers.Get("Copilot-Vision-Request"))
+			} else {
+				assert.Empty(t, headers.Get("Copilot-Vision-Request"))
+			}
+		})
+	}
+}
+
 func TestSanitizeRequestForModelStripsUnsupportedReasoning(t *testing.T) {
 	tests := []struct {
 		model          string

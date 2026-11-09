@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 
 	hostcommon "github.com/QuantumNous/new-api/common"
@@ -260,6 +261,9 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 	for name, value := range a.endpoint.Headers {
 		req.Set(name, value)
 	}
+	if copilotRequestHasImage(info) {
+		req.Set("Copilot-Vision-Request", "true")
+	}
 	if a.endpoint.SessionToken != nil {
 		req.Set(a.endpoint.SessionToken.Header, a.endpoint.SessionToken.Token)
 	}
@@ -285,6 +289,16 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 	}
 	req.Set("Content-Type", "application/json")
 	return nil
+}
+
+func copilotRequestHasImage(info *relaycommon.RelayInfo) bool {
+	if info == nil || info.Request == nil {
+		return false
+	}
+	meta := info.Request.GetTokenCountMeta()
+	return meta != nil && slices.ContainsFunc(meta.Files, func(file *types.FileMeta) bool {
+		return file != nil && file.FileType == types.FileTypeImage
+	})
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
