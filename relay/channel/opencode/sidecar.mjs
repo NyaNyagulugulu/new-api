@@ -1,9 +1,9 @@
-// Free-tier sidecar: the Zen free tier only answers requests whose TLS/HTTP
-// client fingerprint matches the official OpenCode CLI, which is a Bun binary.
-// Go's crypto/tls cannot reproduce that handshake (every uTLS preset, Chrome /
-// Safari / Firefox / iOS / Android, is refused with 429 FreeUsageLimitError),
-// but Bun can, because the official CLI *is* Bun. So the keyless lane sends
-// through this process instead of dialing the upstream from Go.
+// Free-tier sidecar: the Zen free tier only serves requests that look like
+// they come from the official OpenCode CLI, and that CLI is a Bun binary. Go
+// satisfies the header and body checks but its free-tier requests are answered
+// with FreeUsageLimitError where Bun's are served, from the same host and
+// egress at the same moment. So the keyless lane sends through this process
+// instead of dialing the upstream from Go.
 //
 // The sidecar is a dumb forwarder: it copies the method, path, query, headers
 // and body to the upstream verbatim and streams the response back. Request

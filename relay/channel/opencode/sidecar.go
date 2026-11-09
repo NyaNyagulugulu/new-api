@@ -18,12 +18,18 @@ import (
 	"github.com/QuantumNous/new-api/common"
 )
 
-// The free tier is gated on the TLS and HTTP client fingerprint of the
-// official OpenCode CLI. That CLI is a Bun binary, and no Go transport
-// reproduces its handshake: every uTLS preset is refused with the same
-// FreeUsageLimitError that a spent quota returns, while Bun itself succeeds
-// from the same host on the same request bytes. So the keyless lane forwards
-// through Bun instead of dialing the upstream from Go.
+// The free tier only serves requests that look like they come from the
+// official OpenCode CLI, and that CLI is a Bun binary. Go can satisfy the
+// header and body checks — a paid model from Go answers "Missing API key",
+// the same as from Bun — but the same free-tier request bytes that Bun gets
+// served are answered with FreeUsageLimitError when Go sends them, from the
+// same host and the same egress at the same moment. So the keyless lane
+// forwards through Bun instead of dialing the upstream from Go.
+//
+// That 429 also covers an exhausted quota, which is metered per session and
+// per egress address and resets at UTC midnight. Distinguishing the two is
+// not possible from the response, so treat a 429 as "this address or session
+// is spent" rather than as proof that the request shape is wrong.
 //
 //go:embed sidecar.mjs
 var sidecarScript string
