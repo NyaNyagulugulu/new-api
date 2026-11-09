@@ -21,6 +21,7 @@ import { describe, expect, test } from 'vitest'
 import type { TaskPluginOption } from '../../api'
 import {
   CHANNEL_TYPE_NEW_API,
+  CHANNEL_TYPE_OPENCODE,
   CHANNEL_TYPE_VLLM,
   CHANNEL_TYPE_SGLANG,
   CHANNEL_TYPE_OPTIONS,
@@ -256,5 +257,29 @@ describe('New API channel task plugin extensions', () => {
     expect(JSON.parse(openai.channel.setting ?? '{}')).not.toHaveProperty(
       'task_extend_plugin_keys'
     )
+  })
+})
+
+describe('OpenCode channel', () => {
+  test('is selectable, discoverable and uses the OpenCode icon', () => {
+    expect(CHANNEL_TYPE_OPTIONS).toContainEqual({
+      value: CHANNEL_TYPE_OPENCODE,
+      label: 'OpenCode',
+    })
+    expect(MODEL_FETCHABLE_TYPES.has(CHANNEL_TYPE_OPENCODE)).toBe(true)
+    expect(getChannelTypeIcon(CHANNEL_TYPE_OPENCODE)).toBe('OpenCode')
+    expect(getChannelTypeConfig(CHANNEL_TYPE_OPENCODE).icon).toBe('OpenCode')
+  })
+
+  test('accepts an empty key so the keyless free tier can be used', () => {
+    const result = channelFormSchema.safeParse({
+      ...CHANNEL_FORM_DEFAULT_VALUES,
+      type: CHANNEL_TYPE_OPENCODE,
+      name: 'opencode-free',
+      key: 'EMPTY',
+      models: 'deepseek-v4.1-flash-free',
+    })
+
+    expect(result.success).toBe(true)
   })
 })

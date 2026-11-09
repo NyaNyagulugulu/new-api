@@ -52,9 +52,17 @@ RUN apt-get update \
     && mkdir -p /data/copilot/profiles /data/copilot/cache /data/copilot/work \
     && chmod 700 /data/copilot /data/copilot/profiles /data/copilot/cache /data/copilot/work
 
+# The OpenCode Zen free tier only answers the official CLI's client fingerprint,
+# and that CLI is a Bun binary: Go's crypto/tls and every uTLS preset are refused
+# with the same 429 the tier returns for an exhausted quota. The relay therefore
+# forwards keyless OpenCode traffic through a local Bun sidecar, so the runtime
+# has to be in the image. Copying it from the web builder avoids a second
+# download and keeps the version pinned by the same digest as the frontend build.
+COPY --from=builder /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=builder2 /build/new-api /
 COPY LICENSE NOTICE THIRD-PARTY-LICENSES.md /licenses/
-ENV COPILOT_CLI_PATH=/usr/local/bin/copilot
+ENV COPILOT_CLI_PATH=/usr/local/bin/copilot \
+    OPENCODE_BUN_PATH=/usr/local/bin/bun
 EXPOSE 3000
 WORKDIR /data
 ENTRYPOINT ["/new-api"]

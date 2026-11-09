@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   CHANNEL_TYPES,
+  CHANNEL_TYPE_OPENCODE,
   CHANNEL_TYPE_VLLM,
   CHANNEL_TYPE_SGLANG,
 } from '../constants'
@@ -49,6 +50,16 @@ export interface ChannelTypeConfig {
  * Configuration for each channel type
  */
 export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
+  [CHANNEL_TYPE_OPENCODE]: {
+    id: CHANNEL_TYPE_OPENCODE,
+    name: CHANNEL_TYPES[CHANNEL_TYPE_OPENCODE],
+    icon: 'OpenCode',
+    hints: {
+      baseUrl: 'OpenCode gateway address, without the /inference path',
+      key: 'OpenCode Zen API key, or EMPTY to use the free models without one',
+      models: 'Free model ids, or models fetched from the gateway listing',
+    },
+  },
   [CHANNEL_TYPE_SGLANG]: {
     id: CHANNEL_TYPE_SGLANG,
     name: CHANNEL_TYPES[CHANNEL_TYPE_SGLANG],
