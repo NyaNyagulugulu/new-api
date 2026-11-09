@@ -19,8 +19,8 @@ func Playground(c *gin.Context) {
 
 	defer func() {
 		if newAPIError != nil {
-			c.JSON(newAPIError.StatusCode, gin.H{
-				"error": newAPIError.ToOpenAIError(common.UpstreamAddresses(c)...),
+			c.JSON(newAPIError.ClientStatusCode(), gin.H{
+				"error": newAPIError.ToClientOpenAIError(c.GetString(common.RequestIdKey), common.UpstreamAddresses(c)...),
 			})
 		}
 	}()

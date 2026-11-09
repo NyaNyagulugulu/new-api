@@ -104,6 +104,9 @@ func newResponsesWSRequestRunner(c *gin.Context) relay.ResponsesWSRequestRunner 
 			Error *types.OpenAIError `json:"error"`
 		}
 		if common.Unmarshal(response.body.Bytes(), &body) == nil && body.Error != nil {
+			// This branch bridges the internal middleware engine, so the body may
+			// equally be our own rejection (401/429) or an upstream frame; the
+			// upstream flag is set by whoever obtained the upstream response.
 			return types.WithOpenAIError(*body.Error, response.status, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 		}
 		// A rejection without an OpenAI error body keeps its HTTP status text.
@@ -123,6 +126,6 @@ func ResponsesWebSocket(c *gin.Context) {
 	if apiError := relay.ResponsesWebSocketHelper(c, ws, runner); apiError != nil {
 		logger.LogError(c, common.LogText("responses websocket relay error: %s", common.LocalLogPreview(apiError.Error())))
 		apiError.SetMessage(common.MessageWithRequestId(apiError.Error(), requestID))
-		helper.WssError(c, ws, apiError.ToOpenAIError(common.UpstreamAddresses(c)...))
+		helper.WssError(c, ws, apiError.ToClientOpenAIError(requestID, common.UpstreamAddresses(c)...))
 	}
 }

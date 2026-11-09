@@ -454,7 +454,7 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 						// rejected request; keep the client-facing type stable.
 						rejection.Error = &types.OpenAIError{Type: "invalid_request_error", Message: event.Message, Code: event.Code}
 					}
-					rejected := types.WithOpenAIError(*rejection.Error, rejection.Status, types.ErrOptionWithSkipRetry())
+					rejected := types.WithOpenAIError(*rejection.Error, rejection.Status, types.ErrOptionWithSkipRetry(), types.ErrOptionWithUpstreamFailure())
 					if rejected.StatusCode < 400 || rejected.StatusCode > 599 {
 						rejected.StatusCode = http.StatusBadRequest
 					}
@@ -896,11 +896,8 @@ func buildResponsesWSErrorPayload(eventID, streamID string, apiErr *types.NewAPI
 	if apiErr == nil {
 		return nil, errors.New("api error is nil")
 	}
-	status := apiErr.StatusCode
-	if status == 0 {
-		status = http.StatusInternalServerError
-	}
-	openaiErr := apiErr.ToOpenAIError(upstreamURLs...)
+	status := apiErr.ClientStatusCode()
+	openaiErr := apiErr.ToClientOpenAIError("", upstreamURLs...)
 	return common.Marshal(&responsesWSErrorEvent{
 		Type:     "error",
 		Status:   status,

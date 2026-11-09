@@ -94,6 +94,7 @@ type NewAPIError struct {
 	recordErrorLog *bool
 	errorType      ErrorType
 	errorCode      ErrorCode
+	upstream       bool
 	StatusCode     int
 	Metadata       json.RawMessage
 }
@@ -242,6 +243,82 @@ func (e *NewAPIError) ToClaudeError(upstreamURLs ...string) ClaudeError {
 		result.Message = string(e.errorType)
 	}
 	return result
+}
+
+// UpstreamFailureMessage is the only text a caller sees when a channel failed.
+// Whatever the upstream said (provider names, quota numbers, echoed request
+// data, internal hostnames) stays in the gateway log.
+const UpstreamFailureMessage = "upstream service error"
+
+// IsUpstreamFailure reports whether the error was produced by a channel rather
+// than by this gateway. Callers use it to decide whether the message may be
+// shown to the requester verbatim.
+func (e *NewAPIError) IsUpstreamFailure() bool {
+	if e == nil {
+		return false
+	}
+	if e.upstream {
+		return true
+	}
+	// Failures that only happen while talking to a channel: the connect, the
+	// read, or the status line. Their text can name internal hosts, so they are
+	// treated as upstream even when no body was parsed.
+	switch e.errorCode {
+	case ErrorCodeDoRequestFailed, ErrorCodeReadResponseBodyFailed, ErrorCodeBadResponseStatusCode:
+		return true
+	}
+	return false
+}
+
+// ErrOptionWithUpstreamFailure marks the error as produced by a channel. Set it
+// wherever an upstream response body or status is converted into an error.
+func ErrOptionWithUpstreamFailure() NewAPIErrorOptions {
+	return func(e *NewAPIError) {
+		e.upstream = true
+	}
+}
+
+// ClientStatusCode is the status code safe to send to the caller: upstream
+// failures collapse to 500 so upstream state codes (401, 429, ...) cannot leak.
+func (e *NewAPIError) ClientStatusCode() int {
+	if e.IsUpstreamFailure() {
+		return http.StatusInternalServerError
+	}
+	if e == nil || e.StatusCode == 0 {
+		return http.StatusInternalServerError
+	}
+	return e.StatusCode
+}
+
+// ToClientOpenAIError is the caller-facing variant of ToOpenAIError: upstream
+// failures are replaced by a generic message carrying only our request id.
+func (e *NewAPIError) ToClientOpenAIError(requestID string, upstreamURLs ...string) OpenAIError {
+	if !e.IsUpstreamFailure() {
+		return e.ToOpenAIError(upstreamURLs...)
+	}
+	return OpenAIError{
+		Message: clientMessage(requestID),
+		Type:    string(ErrorTypeUpstreamError),
+		Code:    string(ErrorTypeUpstreamError),
+	}
+}
+
+// ToClientClaudeError is the Claude-shaped counterpart of ToClientOpenAIError.
+func (e *NewAPIError) ToClientClaudeError(requestID string, upstreamURLs ...string) ClaudeError {
+	if !e.IsUpstreamFailure() {
+		return e.ToClaudeError(upstreamURLs...)
+	}
+	return ClaudeError{
+		Type:    "error",
+		Message: clientMessage(requestID),
+	}
+}
+
+func clientMessage(requestID string) string {
+	if requestID == "" {
+		return UpstreamFailureMessage
+	}
+	return UpstreamFailureMessage + " (request id: " + requestID + ")"
 }
 
 type NewAPIErrorOptions func(*NewAPIError)

@@ -145,7 +145,7 @@ func MultimodalEmbeddingHandler(c *gin.Context, resp *http.Response, info *relay
 			Type:    aliResponse.Code,
 			Param:   aliResponse.RequestId,
 			Code:    aliResponse.Code,
-		}, http.StatusInternalServerError), nil
+		}, http.StatusInternalServerError, types.ErrOptionWithUpstreamFailure()), nil
 	}
 
 	data := make([]dto.EmbeddingResponseItem, 0, len(aliResponse.Output.Embeddings))

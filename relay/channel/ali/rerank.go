@@ -51,7 +51,7 @@ func RerankHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayI
 			Type:    aliResponse.Code,
 			Param:   aliResponse.RequestId,
 			Code:    aliResponse.Code,
-		}, resp.StatusCode), nil
+		}, resp.StatusCode, types.ErrOptionWithUpstreamFailure()), nil
 	}
 
 	usage := dto.Usage{

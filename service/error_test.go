@@ -3,7 +3,6 @@ package service
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -63,7 +62,7 @@ func TestResetStatusCode(t *testing.T) {
 	}
 }
 
-func TestRelayErrorHandlerTruncatesInvalidJSONBodyInLog(t *testing.T) {
+func TestRelayErrorHandlerLogsFullUpstreamBody(t *testing.T) {
 	withDebugEnabled(t, false)
 
 	body := strings.Repeat("b", common.LocalLogContentLimit+256)
@@ -88,9 +87,8 @@ func TestRelayErrorHandlerTruncatesInvalidJSONBodyInLog(t *testing.T) {
 
 	require.NotNil(t, newAPIError)
 	require.Equal(t, "bad response status code 500", newAPIError.Error())
-	require.Contains(t, logBuffer.String(), "[truncated")
-	require.Contains(t, logBuffer.String(), fmt.Sprintf("original_length=%d", len(body)))
-	require.NotContains(t, logBuffer.String(), strings.Repeat("b", common.LocalLogContentLimit+1))
+	require.Contains(t, logBuffer.String(), body)
+	require.NotContains(t, logBuffer.String(), "[truncated")
 }
 
 func TestRelayErrorHandlerKeepsStructuredErrorMessage(t *testing.T) {

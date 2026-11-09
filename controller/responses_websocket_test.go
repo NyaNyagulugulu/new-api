@@ -810,9 +810,9 @@ func TestResponsesWebSocketInitialUpstreamRejectionRefundsReservation(t *testing
 		name, upstream, wantType, wantMessage string
 		status                                int
 	}{
-		{name: "structured error", upstream: `{"type":"error","response_id":"rejected","status":400,"error":{"type":"invalid_request_error","code":"invalid_input","message":"Invalid input"}}`, status: http.StatusBadRequest, wantType: "invalid_request_error", wantMessage: "Invalid input"},
-		// A frame without an error object is still reported as a request error.
-		{name: "bare error", upstream: `{"type":"error","status":500,"message":"upstream rejected"}`, status: http.StatusInternalServerError, wantType: "invalid_request_error", wantMessage: "upstream rejected"},
+		// Whatever the upstream frame says, the caller sees one generic failure.
+		{name: "structured error", upstream: `{"type":"error","response_id":"rejected","status":400,"error":{"type":"invalid_request_error","code":"invalid_input","message":"Invalid input"}}`, status: http.StatusInternalServerError, wantType: string(types.ErrorTypeUpstreamError), wantMessage: types.UpstreamFailureMessage},
+		{name: "bare error", upstream: `{"type":"error","status":500,"message":"upstream rejected"}`, status: http.StatusInternalServerError, wantType: string(types.ErrorTypeUpstreamError), wantMessage: types.UpstreamFailureMessage},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			preConsumed := make(chan int, 1)
@@ -1040,7 +1040,9 @@ func TestResponsesHTTPHealthCountsFinalResult(t *testing.T) {
 			fixture.closeAndWait(t)
 			assert.Equal(t, int64(tc.attempts), attempts.Load())
 			if !tc.success {
-				assert.Equal(t, tc.firstStatus, response.StatusCode)
+				// The upstream status still drives retry and health accounting, but
+				// it is never forwarded to the caller.
+				assert.Equal(t, http.StatusInternalServerError, response.StatusCode)
 			} else {
 				assert.Equal(t, http.StatusOK, response.StatusCode)
 			}

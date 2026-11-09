@@ -86,6 +86,11 @@ func ClaudeErrorWrapperLocal(err error, code string, statusCode int) *dto.Claude
 
 func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFail bool) (newApiErr *types.NewAPIError) {
 	newApiErr = types.InitOpenAIError(types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
+	defer func() {
+		if newApiErr != nil {
+			types.ErrOptionWithUpstreamFailure()(newApiErr)
+		}
+	}()
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -94,7 +99,7 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 	CloseResponseBodyGracefully(resp)
 	var errResponse dto.GeneralErrorResponse
 	responseBodyText := string(responseBody)
-	responseBodyPreview := common.LocalLogPreview(responseBodyText)
+	LogUpstreamFailureBody(ctx, resp.StatusCode, responseBodyText)
 	buildErrWithBody := func(message string) error {
 		if message == "" {
 			return fmt.Errorf("bad response status code %d, body: %s", resp.StatusCode, responseBodyText)
@@ -107,7 +112,6 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 		if showBodyWhenFail {
 			newApiErr.Err = buildErrWithBody("")
 		} else {
-			logger.LogError(ctx, common.LogText("bad response status code %d, body: %s", resp.StatusCode, responseBodyPreview))
 			newApiErr.Err = fmt.Errorf("bad response status code %d", resp.StatusCode)
 		}
 		return
@@ -125,16 +129,27 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 		}
 	}
 	message := errResponse.ToMessage()
-	if message == "" {
-		// The body parsed as JSON but carried no usable error message; log the
-		// raw body so the upstream failure remains diagnosable.
-		logger.LogError(ctx, common.LogText("bad response status code %d with empty error message, body: %s", resp.StatusCode, responseBodyPreview))
-	}
 	newApiErr = types.NewOpenAIError(errors.New(message), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
 	if showBodyWhenFail {
 		newApiErr.Err = buildErrWithBody(newApiErr.Error())
 	}
 	return
+}
+
+// UpstreamBodyLogLimit bounds how much of an upstream error body is written to
+// the gateway log. Real upstream failures are a few hundred bytes; the cap only
+// exists so a hostile or broken upstream cannot fill the disk.
+const UpstreamBodyLogLimit = 64 * 1024
+
+// LogUpstreamFailureBody writes the complete upstream error body to the backend
+// log. Callers never receive it: RelayErrorHandler keeps the detail in the
+// internal error and the API layer collapses it into a bare 500.
+func LogUpstreamFailureBody(ctx context.Context, statusCode int, body string) {
+	recorded := body
+	if len(recorded) > UpstreamBodyLogLimit {
+		recorded = fmt.Sprintf("%s... [truncated, original_length=%d, limit=%d]", recorded[:UpstreamBodyLogLimit], len(body), UpstreamBodyLogLimit)
+	}
+	logger.LogError(ctx, common.LogText("upstream failure status_code=%d body=%s", statusCode, recorded))
 }
 
 func ResetStatusCode(newApiErr *types.NewAPIError, statusCodeMappingStr string) {

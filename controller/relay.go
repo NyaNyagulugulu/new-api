@@ -104,17 +104,18 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			if relayFormat != types.RelayFormatOpenAIRealtime {
 				c.Header("Content-Type", "application/json; charset=utf-8")
 			}
+			statusCode := newAPIError.ClientStatusCode()
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
-				helper.WssError(c, ws, newAPIError.ToOpenAIError(upstreamURLs...))
+				helper.WssError(c, ws, newAPIError.ToClientOpenAIError(requestId, upstreamURLs...))
 			case types.RelayFormatClaude:
-				c.JSON(newAPIError.StatusCode, gin.H{
+				c.JSON(statusCode, gin.H{
 					"type":  "error",
-					"error": newAPIError.ToClaudeError(upstreamURLs...),
+					"error": newAPIError.ToClientClaudeError(requestId, upstreamURLs...),
 				})
 			default:
-				c.JSON(newAPIError.StatusCode, gin.H{
-					"error": newAPIError.ToOpenAIError(upstreamURLs...),
+				c.JSON(statusCode, gin.H{
+					"error": newAPIError.ToClientOpenAIError(requestId, upstreamURLs...),
 				})
 			}
 		}
@@ -247,12 +248,13 @@ func writeRelayStreamError(c *gin.Context, format types.RelayFormat, apiError *t
 		common.SetContextKey(c, constant.ContextKeyResponseStreamStatus, status)
 	}
 	status.MarkFailed(string(apiError.GetErrorCode()), string(apiError.GetErrorType()), apiError.StatusCode)
+	requestId := c.GetString(common.RequestIdKey)
 	upstreamURLs := common.UpstreamAddresses(c)
 	if format == types.RelayFormatClaude {
-		_ = helper.ClaudeData(c, dto.ClaudeResponse{Type: "error", Error: apiError.ToClaudeError(upstreamURLs...)})
+		_ = helper.ClaudeData(c, dto.ClaudeResponse{Type: "error", Error: apiError.ToClientClaudeError(requestId, upstreamURLs...)})
 		return
 	}
-	_ = helper.ObjectData(c, gin.H{"error": apiError.ToOpenAIError(upstreamURLs...)})
+	_ = helper.ObjectData(c, gin.H{"error": apiError.ToClientOpenAIError(requestId, upstreamURLs...)})
 	helper.Done(c)
 }
 

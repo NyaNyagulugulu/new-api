@@ -286,7 +286,10 @@ func TestRelayStreamErrorAfterKeepAlive(t *testing.T) {
 			writeRelayStreamError(c, format, apiError)
 			require.Equal(t, http.StatusOK, recorder.Code)
 			require.Equal(t, "text/event-stream", recorder.Header().Get("Content-Type"))
-			require.Contains(t, recorder.Body.String(), "upstream rejected input")
+			// The caller only learns that the upstream failed: the detail stays in
+			// the gateway log.
+			require.Contains(t, recorder.Body.String(), types.UpstreamFailureMessage)
+			require.NotContains(t, recorder.Body.String(), "upstream rejected input")
 			require.NotContains(t, recorder.Body.String(), "provider.example")
 			status, ok := common.GetContextKeyType[*relaycommon.StreamStatus](c, constant.ContextKeyResponseStreamStatus)
 			require.True(t, ok)
