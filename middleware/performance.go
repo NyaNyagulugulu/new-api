@@ -18,17 +18,13 @@ func SystemPerformanceCheck() gin.HandlerFunc {
 		path := c.Request.URL.Path
 		if strings.HasPrefix(path, "/v1/messages") {
 			if err := checkSystemPerformance(); err != nil {
-				c.JSON(err.ClientStatusCode(), gin.H{
-					"error": err.ToClientClaudeError(c.GetString(common.RequestIdKey)),
-				})
+				c.JSON(err.ClientStatusCode(), err.ClientErrorBody(types.RelayFormatClaude, c.GetString(common.RequestIdKey)))
 				c.Abort()
 				return
 			}
 		} else {
 			if err := checkSystemPerformance(); err != nil {
-				c.JSON(err.ClientStatusCode(), gin.H{
-					"error": err.ToClientOpenAIError(c.GetString(common.RequestIdKey)),
-				})
+				c.JSON(err.ClientStatusCode(), err.ClientErrorBody(types.RelayFormatForPath(path), c.GetString(common.RequestIdKey)))
 				c.Abort()
 				return
 			}

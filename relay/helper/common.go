@@ -209,6 +209,22 @@ func ClaudeData(c *gin.Context, resp dto.ClaudeResponse) error {
 	return nil
 }
 
+// EventData writes a named SSE event with a JSON payload. The Responses API
+// uses this for control events such as "error", which carry no envelope.
+func EventData(c *gin.Context, event string, payload any) error {
+	if requestContextDone(c) {
+		return nil
+	}
+	jsonData, err := common.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("error marshalling %s event: %w", event, err)
+	}
+	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", event)})
+	c.Render(-1, common.CustomEvent{Data: "data: " + string(jsonData)})
+	_ = FlushWriter(c)
+	return nil
+}
+
 func ClaudeChunkData(c *gin.Context, resp dto.ClaudeResponse, data string) {
 	if requestContextDone(c) {
 		return

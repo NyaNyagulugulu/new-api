@@ -341,11 +341,17 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		logger.LogError(c, common.LogText("responses stream failed after output was delivered, billing the delivered output: %s", streamErr.Error()))
 		streamErr.SetMessage(common.MessageWithRequestId(streamErr.Error(), c.GetString(common.RequestIdKey)))
 		requestId := c.GetString(common.RequestIdKey)
-		statusCode := streamErr.ClientStatusCode()
-		if info.RelayFormat == types.RelayFormatClaude {
-			c.JSON(statusCode, gin.H{"type": "error", "error": streamErr.ToClientClaudeError(requestId, common.UpstreamAddresses(c)...)})
-		} else {
-			c.JSON(statusCode, gin.H{"error": streamErr.ToClientOpenAIError(requestId, common.UpstreamAddresses(c)...)})
+		// The response has already started, so this failure has to ride the
+		// same stream: a JSON body here would corrupt the event framing.
+		upstreamURLs := common.UpstreamAddresses(c)
+		switch info.RelayFormat {
+		case types.RelayFormatClaude:
+			_ = helper.ClaudeData(c, dto.ClaudeResponse{Type: "error", Error: streamErr.ClientClaudeError(requestId, upstreamURLs...)})
+		case types.RelayFormatOpenAIResponses, types.RelayFormatOpenAIResponsesCompaction:
+			_ = helper.EventData(c, "error", streamErr.ClientStreamErrorBody(info.RelayFormat, requestId, 0, upstreamURLs...))
+		default:
+			_ = helper.ObjectData(c, streamErr.ClientStreamErrorBody(info.RelayFormat, requestId, 0, upstreamURLs...))
+			helper.Done(c)
 		}
 		return usage, nil
 	}

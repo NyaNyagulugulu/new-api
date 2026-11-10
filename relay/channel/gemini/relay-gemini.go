@@ -451,17 +451,7 @@ func GeminiChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.R
 
 		requestId := c.GetString(common.RequestIdKey)
 		statusCode := newAPIError.ClientStatusCode()
-		switch info.RelayFormat {
-		case types.RelayFormatClaude:
-			c.JSON(statusCode, gin.H{
-				"type":  "error",
-				"error": newAPIError.ToClientClaudeError(requestId, common.UpstreamAddresses(c)...),
-			})
-		default:
-			c.JSON(statusCode, gin.H{
-				"error": newAPIError.ToClientOpenAIError(requestId, common.UpstreamAddresses(c)...),
-			})
-		}
+		c.JSON(statusCode, newAPIError.ClientErrorBody(info.RelayFormat, requestId, common.UpstreamAddresses(c)...))
 		return &usage, nil
 	}
 	fullTextResponse := responseGeminiChat2OpenAI(c, &geminiResponse)

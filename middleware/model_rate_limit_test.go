@@ -133,8 +133,9 @@ func TestModelMemoryRateLimitRejectionsReturnOpenAIError(t *testing.T) {
 			message := i18n.Translate("", tc.messageKey, map[string]any{"Minutes": setting.ModelRequestRateLimitDurationMinutes, "Max": 1})
 			want, err := common.Marshal(gin.H{"error": gin.H{
 				"message": common.MessageWithRequestId(message, "req-limited"),
-				"type":    "new_api_error",
-				"code":    "",
+				"type":    "rate_limit_error",
+				"code":    nil,
+				"param":   nil,
 			}})
 			require.NoError(t, err)
 			assert.JSONEq(t, string(want), resp.Body.String())

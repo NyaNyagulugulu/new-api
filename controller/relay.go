@@ -105,19 +105,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				c.Header("Content-Type", "application/json; charset=utf-8")
 			}
 			statusCode := newAPIError.ClientStatusCode()
-			switch relayFormat {
-			case types.RelayFormatOpenAIRealtime:
-				helper.WssError(c, ws, newAPIError.ToClientOpenAIError(requestId, upstreamURLs...))
-			case types.RelayFormatClaude:
-				c.JSON(statusCode, gin.H{
-					"type":  "error",
-					"error": newAPIError.ToClientClaudeError(requestId, upstreamURLs...),
-				})
-			default:
-				c.JSON(statusCode, gin.H{
-					"error": newAPIError.ToClientOpenAIError(requestId, upstreamURLs...),
-				})
+			if relayFormat == types.RelayFormatOpenAIRealtime {
+				helper.WssError(c, ws, newAPIError.ClientOpenAIError(requestId, upstreamURLs...))
+				return
 			}
+			c.JSON(statusCode, newAPIError.ClientErrorBody(relayFormat, requestId, upstreamURLs...))
 		}
 	}()
 
@@ -250,12 +242,17 @@ func writeRelayStreamError(c *gin.Context, format types.RelayFormat, apiError *t
 	status.MarkFailed(string(apiError.GetErrorCode()), string(apiError.GetErrorType()), apiError.StatusCode)
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamURLs := common.UpstreamAddresses(c)
-	if format == types.RelayFormatClaude {
-		_ = helper.ClaudeData(c, dto.ClaudeResponse{Type: "error", Error: apiError.ToClientClaudeError(requestId, upstreamURLs...)})
-		return
+	switch format {
+	case types.RelayFormatClaude:
+		_ = helper.ClaudeData(c, dto.ClaudeResponse{Type: "error", Error: apiError.ClientClaudeError(requestId, upstreamURLs...)})
+	case types.RelayFormatOpenAIResponses, types.RelayFormatOpenAIResponsesCompaction:
+		// The Responses stream carries a flat error event instead of an
+		// envelope, and the [DONE] sentinel does not belong to it.
+		_ = helper.EventData(c, "error", apiError.ClientStreamErrorBody(format, requestId, 0, upstreamURLs...))
+	default:
+		_ = helper.ObjectData(c, apiError.ClientStreamErrorBody(format, requestId, 0, upstreamURLs...))
+		helper.Done(c)
 	}
-	_ = helper.ObjectData(c, gin.H{"error": apiError.ToClientOpenAIError(requestId, upstreamURLs...)})
-	helper.Done(c)
 }
 
 // CountClaudeTokens implements Anthropic's token-counting utility endpoint.
@@ -386,15 +383,8 @@ func RelayMidjourney(c *gin.Context) {
 }
 
 func RelayNotImplemented(c *gin.Context) {
-	err := types.OpenAIError{
-		Message: "API not implemented",
-		Type:    "new_api_error",
-		Param:   "",
-		Code:    "api_not_implemented",
-	}
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"error": err,
-	})
+	apiErr := types.NewErrorWithStatusCode(errors.New("API not implemented"), types.ErrorCode("api_not_implemented"), http.StatusNotImplemented)
+	c.JSON(http.StatusNotImplemented, apiErr.ClientErrorBody(types.RelayFormatForPath(c.Request.URL.Path), c.GetString(common.RequestIdKey)))
 }
 
 func RelayNotFound(c *gin.Context) {
@@ -403,15 +393,8 @@ func RelayNotFound(c *gin.Context) {
 	c.Header("Cache-Control", "no-store, no-cache, must-revalidate, private, max-age=0")
 	c.Header("Pragma", "no-cache")
 	c.Header("Expires", "0")
-	err := types.OpenAIError{
-		Message: fmt.Sprintf("Invalid URL (%s %s)", c.Request.Method, c.Request.URL.Path),
-		Type:    "invalid_request_error",
-		Param:   "",
-		Code:    "",
-	}
-	c.JSON(http.StatusNotFound, gin.H{
-		"error": err,
-	})
+	apiErr := types.NewErrorWithStatusCode(errors.New(fmt.Sprintf("Invalid URL (%s %s)", c.Request.Method, c.Request.URL.Path)), types.ErrorCodeInvalidRequest, http.StatusNotFound)
+	c.JSON(http.StatusNotFound, apiErr.ClientErrorBody(types.RelayFormatForPath(c.Request.URL.Path), c.GetString(common.RequestIdKey)))
 }
 
 // RelayTaskPluginEndpoint keeps unclaimed shared-endpoint traffic on its

@@ -1469,7 +1469,7 @@ func TestTaskPluginErrorFallbackIsSanitized(t *testing.T) {
 				Params: map[string]string{}, Query: map[string][]string{},
 			})
 
-			abortWithOpenAiMessage(c, http.StatusBadGateway, "https://user:password@upstream.invalid?token=secret")
+			abortWithRelayError(c, http.StatusBadGateway, "https://user:password@upstream.invalid?token=secret")
 
 			assert.Equal(t, http.StatusBadGateway, recorder.Code)
 			assert.JSONEq(t, `{"code":"server_error","message":"Task request failed (request id: fallback-req)","data":null}`, recorder.Body.String())

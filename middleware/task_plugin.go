@@ -609,7 +609,7 @@ func PinTaskPluginEndpoint() gin.HandlerFunc {
 		modelRequest, err := getModelFromRequest(c)
 		if err != nil {
 			if _, _, protocolPath := pluginruntime.LookupHostProtocolOperation(c.Request.Method, c.Request.URL.Path); protocolPath {
-				abortWithOpenAiMessage(c, invalidRequestStatus(err), i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
+				abortWithRelayError(c, invalidRequestStatus(err), i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 				return
 			}
 			c.Next()
@@ -629,7 +629,7 @@ func PinTaskPluginEndpoint() gin.HandlerFunc {
 		}
 		if claimedModel != pinnedEndpoint.Model {
 			if rewriteErr := rewriteTaskPluginJSONModel(c, pinnedEndpoint.Model); rewriteErr != nil {
-				abortWithOpenAiMessage(c, http.StatusBadRequest, "Invalid task protocol request")
+				abortWithRelayError(c, http.StatusBadRequest, "Invalid task protocol request")
 				return
 			}
 		}
@@ -667,7 +667,7 @@ func PinTaskPluginEndpoint() gin.HandlerFunc {
 				}
 			}
 			if len(filtered) == 0 {
-				abortWithOpenAiMessage(c, http.StatusBadRequest, unsupportedProtocolFormMessage(unfiltered, binding.Protocol, stream, background))
+				abortWithRelayError(c, http.StatusBadRequest, unsupportedProtocolFormMessage(unfiltered, binding.Protocol, stream, background))
 				return
 			}
 			candidates = filtered
@@ -764,7 +764,7 @@ func PrepareTaskPluginEndpoint() gin.HandlerFunc {
 			return
 		}
 		if !ok || pinned.Generation == nil || pinned.Plugin == nil {
-			abortWithOpenAiMessage(c, http.StatusInternalServerError, "Task protocol request failed")
+			abortWithRelayError(c, http.StatusInternalServerError, "Task protocol request failed")
 			return
 		}
 		logger.LogDebug(
@@ -782,7 +782,7 @@ func PrepareTaskPluginEndpoint() gin.HandlerFunc {
 					pinned.Generation.Number,
 					pinned.Plugin.Meta.Key),
 			)
-			abortWithOpenAiMessage(c, http.StatusNotImplemented, "Task protocol bridge is not available")
+			abortWithRelayError(c, http.StatusNotImplemented, "Task protocol bridge is not available")
 			return
 		}
 		requestContext, err := buildTaskPluginRouteRequest(c)
@@ -797,7 +797,7 @@ func PrepareTaskPluginEndpoint() gin.HandlerFunc {
 			if errors.Is(err, errTaskPluginUnsupportedMediaType) {
 				status = http.StatusUnsupportedMediaType
 			}
-			abortWithOpenAiMessage(c, status, err.Error())
+			abortWithRelayError(c, status, err.Error())
 			return
 		}
 		if body, ok := requestContext.Body.(map[string]any); ok {
@@ -828,7 +828,7 @@ func PrepareTaskPluginEndpoint() gin.HandlerFunc {
 			if len(pinned.Operation.BodyKinds) == 1 && pinned.Operation.BodyKinds[0] == pluginruntime.BodyJSON {
 				detail = "this route requires a JSON body"
 			}
-			abortWithOpenAiMessage(c, http.StatusUnsupportedMediaType, detail)
+			abortWithRelayError(c, http.StatusUnsupportedMediaType, detail)
 			return
 		}
 		stream := false
@@ -843,7 +843,7 @@ func PrepareTaskPluginEndpoint() gin.HandlerFunc {
 							pinned.Generation.Number,
 							pinned.Plugin.Meta.Key),
 					)
-					abortWithOpenAiMessage(c, http.StatusBadRequest, "stream must be a boolean")
+					abortWithRelayError(c, http.StatusBadRequest, "stream must be a boolean")
 					return
 				}
 			}
@@ -921,7 +921,7 @@ func PrepareTaskPluginEndpoint() gin.HandlerFunc {
 					failures[index] = strings.Join(rejectedPlugins[detail], ", ") + ": " + detail
 				}
 			}
-			abortWithOpenAiMessage(c, http.StatusBadRequest, strings.Join(failures, "; "))
+			abortWithRelayError(c, http.StatusBadRequest, strings.Join(failures, "; "))
 			return
 		}
 		pinned.Candidates = accepted
@@ -943,7 +943,7 @@ func PrepareTaskPluginEndpoint() gin.HandlerFunc {
 						pinned.Generation.Number,
 						pinned.Plugin.Meta.Key),
 				)
-				abortWithOpenAiMessage(c, http.StatusBadRequest, taskPluginInvalidRouteResult)
+				abortWithRelayError(c, http.StatusBadRequest, taskPluginInvalidRouteResult)
 				return
 			}
 		}
@@ -973,7 +973,7 @@ func PrepareTaskPluginEndpoint() gin.HandlerFunc {
 					pinned.Plugin.Meta.Key,
 					intentErr.Code),
 			)
-			abortWithOpenAiMessage(c, intentErr.StatusCode, intentErr.Message, types.ErrorCode(intentErr.Code))
+			abortWithRelayError(c, intentErr.StatusCode, intentErr.Message, types.ErrorCode(intentErr.Code))
 			return
 		}
 		logger.LogDebug(

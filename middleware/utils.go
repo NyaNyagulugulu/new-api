@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/QuantumNous/new-api/common"
@@ -11,25 +12,22 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func abortWithOpenAiMessage(c *gin.Context, statusCode int, message string, code ...types.ErrorCode) {
-	codeStr := ""
+// abortWithRelayError rejects a relay request with the error envelope of the
+// protocol it used, so callers parse it with the SDK they already have.
+func abortWithRelayError(c *gin.Context, statusCode int, message string, code ...types.ErrorCode) {
+	codeStr := types.ErrorCode("")
 	if len(code) > 0 {
-		codeStr = string(code[0])
+		codeStr = code[0]
 	}
 	userId := c.GetInt("id")
 	_, preparedPluginRoute := c.Get(pluginruntime.ContextKeyRouteRequest)
 	if !preparedPluginRoute || !RespondTaskPluginError(c, &dto.TaskError{
-		Code:       codeStr,
+		Code:       string(codeStr),
 		Message:    message,
 		StatusCode: statusCode,
 	}) {
-		c.JSON(statusCode, gin.H{
-			"error": gin.H{
-				"message": common.MessageWithRequestId(message, c.GetString(common.RequestIdKey)),
-				"type":    "new_api_error",
-				"code":    codeStr,
-			},
-		})
+		apiErr := types.NewErrorWithStatusCode(errors.New(message), codeStr, statusCode)
+		c.JSON(statusCode, apiErr.ClientErrorBody(types.RelayFormatForPath(c.Request.URL.Path), c.GetString(common.RequestIdKey)))
 	}
 	c.Abort()
 	logger.LogError(c.Request.Context(), common.LogText("user %d | %s", userId, message))

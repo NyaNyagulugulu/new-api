@@ -5,15 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 )
 
 type OpenAIError struct {
-	Message  string          `json:"message"`
-	Type     string          `json:"type"`
-	Param    string          `json:"param"`
+	Message string `json:"message"`
+	Type    string `json:"type"`
+	// Param names the request field at fault, or is null: OpenAI clients
+	// distinguish "no parameter" from an empty name.
+	Param    any             `json:"param"`
 	Code     any             `json:"code"`
 	Metadata json.RawMessage `json:"metadata,omitempty"`
 }
@@ -250,6 +253,54 @@ func (e *NewAPIError) ToClaudeError(upstreamURLs ...string) ClaudeError {
 // data, internal hostnames) stays in the gateway log.
 const UpstreamFailureMessage = "upstream service error"
 
+// ClientErrorCodeUpstream travels with every channel-sourced failure.
+const ClientErrorCodeUpstream ErrorCode = "upstream_error"
+
+// The error envelopes of the three protocols this gateway speaks. Every
+// response sent for a failed request is built from one of them, so a caller can
+// parse it with the SDK of the protocol it used.
+type OpenAIErrorResponse struct {
+	Error OpenAIError `json:"error"`
+}
+
+type ClaudeErrorResponse struct {
+	Type  string      `json:"type"`
+	Error ClaudeError `json:"error"`
+}
+
+type GeminiError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Status  string `json:"status"`
+}
+
+type GeminiErrorResponse struct {
+	Error GeminiError `json:"error"`
+}
+
+// ResponsesErrorEvent is the flat error event the Responses API sends inside a
+// stream: no envelope, and a sequence number the client checks for ordering.
+type ResponsesErrorEvent struct {
+	Type           string `json:"type"`
+	Code           string `json:"code"`
+	Message        string `json:"message"`
+	Param          any    `json:"param"`
+	SequenceNumber int    `json:"sequence_number"`
+}
+
+// RelayFormatForPath picks the protocol from the request path, for failures
+// raised before the request reaches the relay (auth, quota, rate limits).
+func RelayFormatForPath(path string) RelayFormat {
+	switch {
+	case strings.HasPrefix(path, "/v1/messages"):
+		return RelayFormatClaude
+	case strings.HasPrefix(path, "/v1beta/"):
+		return RelayFormatGemini
+	default:
+		return RelayFormatOpenAI
+	}
+}
+
 // IsUpstreamFailure reports whether the error was produced by a channel rather
 // than by this gateway. Callers use it to decide whether the message may be
 // shown to the requester verbatim.
@@ -290,35 +341,198 @@ func (e *NewAPIError) ClientStatusCode() int {
 	return e.StatusCode
 }
 
-// ToClientOpenAIError is the caller-facing variant of ToOpenAIError: upstream
-// failures are replaced by a generic message carrying only our request id.
-func (e *NewAPIError) ToClientOpenAIError(requestID string, upstreamURLs ...string) OpenAIError {
+// ClientMessage is the only text the caller sees: everything the upstream said
+// is replaced by one stable sentence, while our own errors keep their message.
+func (e *NewAPIError) ClientMessage(requestID string, upstreamURLs ...string) string {
+	message := UpstreamFailureMessage
 	if !e.IsUpstreamFailure() {
-		return e.ToOpenAIError(upstreamURLs...)
+		message = e.MaskSensitiveError(upstreamURLs...)
+	}
+	if message == "" {
+		message = string(e.errorCode)
+	}
+	if message == "" {
+		message = UpstreamFailureMessage
+	}
+	if requestID == "" {
+		return message
+	}
+	// The relay appends the request id to the internal message before writing
+	// the response; keep that from being added twice.
+	suffix := " (request id: " + requestID + ")"
+	if strings.HasSuffix(message, suffix) {
+		return message
+	}
+	return message + suffix
+}
+
+// ClientErrorStatus is the status the payload reports as the failure's code. It
+// is the channel's own status for an upstream failure and our status otherwise.
+//
+// The HTTP status line and the error type stay 500/server_error either way: the
+// caller's request failed on our side, and the provider's answer must not be
+// restated as a verdict on the caller's request. This number only reaches the
+// caller through the protocol's code field, so a client can still tell a
+// provider rate limit from a provider rejection without seeing a word the
+// provider wrote.
+func (e *NewAPIError) ClientErrorStatus() int {
+	if e != nil && e.IsUpstreamFailure() && e.StatusCode >= 400 && e.StatusCode <= 599 {
+		return e.StatusCode
+	}
+	return e.ClientStatusCode()
+}
+
+// ClientErrorCode is the machine-readable code that accompanies the message, or
+// empty when the failure has none: the caller then sees a null code.
+func (e *NewAPIError) ClientErrorCode() string {
+	if e == nil {
+		return ""
+	}
+	if e.IsUpstreamFailure() {
+		if e.StatusCode >= 400 && e.StatusCode <= 599 {
+			return strconv.Itoa(e.StatusCode)
+		}
+		return string(ClientErrorCodeUpstream)
+	}
+	return string(e.errorCode)
+}
+
+// ClientOpenAIError is the OpenAI-shaped error object for the caller.
+func (e *NewAPIError) ClientOpenAIError(requestID string, upstreamURLs ...string) OpenAIError {
+	var code any
+	if value := e.ClientErrorCode(); value != "" {
+		code = value
 	}
 	return OpenAIError{
-		Message: clientMessage(requestID),
-		Type:    string(ErrorTypeUpstreamError),
-		Code:    string(ErrorTypeUpstreamError),
+		Message: e.ClientMessage(requestID, upstreamURLs...),
+		Type:    openAIClientErrorType(e.ClientStatusCode()),
+		Param:   nil,
+		Code:    code,
 	}
 }
 
-// ToClientClaudeError is the Claude-shaped counterpart of ToClientOpenAIError.
-func (e *NewAPIError) ToClientClaudeError(requestID string, upstreamURLs ...string) ClaudeError {
-	if !e.IsUpstreamFailure() {
-		return e.ToClaudeError(upstreamURLs...)
-	}
+// ClientClaudeError is the Anthropic-shaped error object for the caller.
+func (e *NewAPIError) ClientClaudeError(requestID string, upstreamURLs ...string) ClaudeError {
 	return ClaudeError{
-		Type:    "error",
-		Message: clientMessage(requestID),
+		Type:    claudeClientErrorType(e.ClientStatusCode()),
+		Message: e.ClientMessage(requestID, upstreamURLs...),
 	}
 }
 
-func clientMessage(requestID string) string {
-	if requestID == "" {
-		return UpstreamFailureMessage
+// ClientGeminiError is the Google-shaped error object for the caller.
+func (e *NewAPIError) ClientGeminiError(requestID string, upstreamURLs ...string) GeminiError {
+	// Gemini has no separate type: code and status are the classification, and
+	// its clients require the two to agree.
+	status := e.ClientErrorStatus()
+	return GeminiError{
+		Code:    status,
+		Message: e.ClientMessage(requestID, upstreamURLs...),
+		Status:  geminiClientErrorStatus(status),
 	}
-	return UpstreamFailureMessage + " (request id: " + requestID + ")"
+}
+
+// ClientErrorBody is the protocol-shaped body for a failed request.
+func (e *NewAPIError) ClientErrorBody(format RelayFormat, requestID string, upstreamURLs ...string) any {
+	switch format {
+	case RelayFormatClaude:
+		return ClaudeErrorResponse{Type: "error", Error: e.ClientClaudeError(requestID, upstreamURLs...)}
+	case RelayFormatGemini:
+		return GeminiErrorResponse{Error: e.ClientGeminiError(requestID, upstreamURLs...)}
+	default:
+		return OpenAIErrorResponse{Error: e.ClientOpenAIError(requestID, upstreamURLs...)}
+	}
+}
+
+// ClientStreamErrorBody is the payload for a failure raised after the stream
+// started. The Responses API has no envelope on the wire there: it sends a flat
+// error event and closes the stream.
+func (e *NewAPIError) ClientStreamErrorBody(format RelayFormat, requestID string, sequence int, upstreamURLs ...string) any {
+	switch format {
+	case RelayFormatOpenAIResponses, RelayFormatOpenAIResponsesCompaction:
+		return ResponsesErrorEvent{
+			Type:           "error",
+			Code:           e.ClientErrorCode(),
+			Message:        e.ClientMessage(requestID, upstreamURLs...),
+			Param:          nil,
+			SequenceNumber: sequence,
+		}
+	default:
+		return e.ClientErrorBody(format, requestID, upstreamURLs...)
+	}
+}
+
+// openAIClientErrorType maps a status to the type OpenAI clients classify on.
+func openAIClientErrorType(status int) string {
+	switch {
+	case status == http.StatusUnauthorized:
+		return "authentication_error"
+	case status == http.StatusForbidden:
+		return "permission_error"
+	case status == http.StatusNotFound:
+		return "not_found_error"
+	case status == http.StatusTooManyRequests:
+		return "rate_limit_error"
+	case status >= http.StatusInternalServerError:
+		return "server_error"
+	case status >= http.StatusBadRequest:
+		return "invalid_request_error"
+	default:
+		return "api_error"
+	}
+}
+
+// claudeClientErrorType maps a status to one of Anthropic's error types.
+func claudeClientErrorType(status int) string {
+	switch {
+	case status == http.StatusUnauthorized:
+		return "authentication_error"
+	case status == http.StatusForbidden:
+		return "permission_error"
+	case status == http.StatusNotFound:
+		return "not_found_error"
+	case status == http.StatusRequestEntityTooLarge:
+		return "request_too_large"
+	case status == http.StatusTooManyRequests:
+		return "rate_limit_error"
+	case status == http.StatusServiceUnavailable:
+		return "overloaded_error"
+	case status >= http.StatusInternalServerError:
+		return "api_error"
+	case status >= http.StatusBadRequest:
+		return "invalid_request_error"
+	default:
+		return "api_error"
+	}
+}
+
+// geminiClientErrorStatus maps a status to a google.rpc.Code name.
+func geminiClientErrorStatus(status int) string {
+	switch status {
+	case http.StatusBadRequest:
+		return "INVALID_ARGUMENT"
+	case http.StatusUnauthorized:
+		return "UNAUTHENTICATED"
+	case http.StatusForbidden:
+		return "PERMISSION_DENIED"
+	case http.StatusNotFound:
+		return "NOT_FOUND"
+	case http.StatusConflict:
+		return "ABORTED"
+	case http.StatusTooManyRequests:
+		return "RESOURCE_EXHAUSTED"
+	case http.StatusGatewayTimeout:
+		return "DEADLINE_EXCEEDED"
+	case http.StatusBadGateway, http.StatusServiceUnavailable:
+		return "UNAVAILABLE"
+	}
+	switch {
+	case status >= http.StatusInternalServerError:
+		return "INTERNAL"
+	case status >= http.StatusBadRequest:
+		return "INVALID_ARGUMENT"
+	default:
+		return "UNKNOWN"
+	}
 }
 
 type NewAPIErrorOptions func(*NewAPIError)

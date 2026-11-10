@@ -897,7 +897,7 @@ func buildResponsesWSErrorPayload(eventID, streamID string, apiErr *types.NewAPI
 		return nil, errors.New("api error is nil")
 	}
 	status := apiErr.ClientStatusCode()
-	openaiErr := apiErr.ToClientOpenAIError("", upstreamURLs...)
+	openaiErr := apiErr.ClientOpenAIError("", upstreamURLs...)
 	return common.Marshal(&responsesWSErrorEvent{
 		Type:     "error",
 		Status:   status,

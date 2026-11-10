@@ -811,8 +811,8 @@ func TestResponsesWebSocketInitialUpstreamRejectionRefundsReservation(t *testing
 		status                                int
 	}{
 		// Whatever the upstream frame says, the caller sees one generic failure.
-		{name: "structured error", upstream: `{"type":"error","response_id":"rejected","status":400,"error":{"type":"invalid_request_error","code":"invalid_input","message":"Invalid input"}}`, status: http.StatusInternalServerError, wantType: string(types.ErrorTypeUpstreamError), wantMessage: types.UpstreamFailureMessage},
-		{name: "bare error", upstream: `{"type":"error","status":500,"message":"upstream rejected"}`, status: http.StatusInternalServerError, wantType: string(types.ErrorTypeUpstreamError), wantMessage: types.UpstreamFailureMessage},
+		{name: "structured error", upstream: `{"type":"error","response_id":"rejected","status":400,"error":{"type":"invalid_request_error","code":"invalid_input","message":"Invalid input"}}`, status: http.StatusInternalServerError, wantType: "server_error", wantMessage: types.UpstreamFailureMessage},
+		{name: "bare error", upstream: `{"type":"error","status":500,"message":"upstream rejected"}`, status: http.StatusInternalServerError, wantType: "server_error", wantMessage: types.UpstreamFailureMessage},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			preConsumed := make(chan int, 1)

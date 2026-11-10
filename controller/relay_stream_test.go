@@ -273,7 +273,7 @@ func TestRelayKeepAliveHonorsStreamSettings(t *testing.T) {
 }
 
 func TestRelayStreamErrorAfterKeepAlive(t *testing.T) {
-	for _, format := range []types.RelayFormat{types.RelayFormatClaude, types.RelayFormatOpenAI} {
+	for _, format := range []types.RelayFormat{types.RelayFormatClaude, types.RelayFormatOpenAI, types.RelayFormatOpenAIResponses} {
 		t.Run(string(format), func(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(recorder)
@@ -295,9 +295,20 @@ func TestRelayStreamErrorAfterKeepAlive(t *testing.T) {
 			require.True(t, ok)
 			require.True(t, status.ResponseFailed(), "stream errors must not consume the successful-request rate limit")
 			require.Equal(t, http.StatusBadRequest, status.OutcomeSnapshot().ErrorStatus)
-			if format == types.RelayFormatClaude {
+			switch format {
+			case types.RelayFormatClaude:
 				require.Contains(t, recorder.Body.String(), "event: error\n")
-			} else {
+			case types.RelayFormatOpenAIResponses:
+				// The Responses stream carries a flat error event and never the
+				// chat-completions envelope or its [DONE] sentinel.
+				require.Contains(t, recorder.Body.String(), "event: error\n")
+				require.Contains(t, recorder.Body.String(), `"type":"error"`)
+				// The upstream answered 400: the caller keeps that status as a
+				// code so it can classify the failure, but not the provider text.
+				require.Contains(t, recorder.Body.String(), `"code":"400"`)
+				require.NotContains(t, recorder.Body.String(), `"error":{`)
+				require.NotContains(t, recorder.Body.String(), "[DONE]")
+			default:
 				require.Contains(t, recorder.Body.String(), "data: [DONE]")
 			}
 		})
