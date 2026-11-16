@@ -106,8 +106,8 @@ func TestModelMemoryRateLimitReservesConcurrentSuccessAdmission(t *testing.T) {
 	assert.Equal(t, http.StatusTooManyRequests, performRateLimitRequest(router, "/completed", "127.0.0.1:1000").Code)
 }
 
-// The memory limiter answers like the Redis limiter: an OpenAI error body
-// naming the limit that was reached, not an empty 429.
+// The memory limiter answers with the project's client error envelope, not an
+// empty 429.
 func TestModelMemoryRateLimitRejectionsReturnOpenAIError(t *testing.T) {
 	require.NoError(t, i18n.Init())
 	for _, tc := range []struct {
@@ -133,9 +133,8 @@ func TestModelMemoryRateLimitRejectionsReturnOpenAIError(t *testing.T) {
 			message := i18n.Translate("", tc.messageKey, map[string]any{"Minutes": setting.ModelRequestRateLimitDurationMinutes, "Max": 1})
 			want, err := common.Marshal(gin.H{"error": gin.H{
 				"message": common.MessageWithRequestId(message, "req-limited"),
-				"type":    "rate_limit_error",
+				"type":    "new_api_error",
 				"code":    nil,
-				"param":   nil,
 			}})
 			require.NoError(t, err)
 			assert.JSONEq(t, string(want), resp.Body.String())

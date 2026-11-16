@@ -27,7 +27,7 @@ func TestUpstreamFailureIsSanitizedForCaller(t *testing.T) {
 	require.Equal(t, UpstreamFailureMessage+" (request id: req-1)", body.Error.Message)
 	// The status line stays 500 because the request failed here; the provider's
 	// 429 survives only in the code, which names no provider detail.
-	require.Equal(t, "server_error", body.Error.Type)
+	require.Equal(t, "new_api_error", body.Error.Type)
 	require.Equal(t, "429", body.Error.Code)
 	require.Nil(t, body.Error.Param)
 	require.NotContains(t, body.Error.Message, "opencode.ai")
@@ -78,7 +78,7 @@ func TestUpstreamStatusSurvivesWithoutLeakingTheBody(t *testing.T) {
 
 	openAI := err.ClientErrorBody(RelayFormatOpenAI, "").(OpenAIErrorResponse)
 	require.Equal(t, "429", openAI.Error.Code)
-	require.Equal(t, "server_error", openAI.Error.Type)
+	require.Equal(t, "new_api_error", openAI.Error.Type)
 
 	// Anthropic has no code field: its error.type is the only classification, so
 	// it reports our 500, never the provider's status.
@@ -106,7 +106,7 @@ func TestUpstreamFailureWithoutUsableStatusFallsBackToGenericCode(t *testing.T) 
 	require.Equal(t, http.StatusInternalServerError, err.ClientStatusCode())
 	body := err.ClientErrorBody(RelayFormatOpenAI, "").(OpenAIErrorResponse)
 	require.Equal(t, string(ClientErrorCodeUpstream), body.Error.Code)
-	require.Equal(t, "server_error", body.Error.Type)
+	require.Equal(t, "new_api_error", body.Error.Type)
 }
 
 func TestLocalErrorKeepsItsOwnMessageAndStatus(t *testing.T) {
@@ -117,7 +117,7 @@ func TestLocalErrorKeepsItsOwnMessageAndStatus(t *testing.T) {
 
 	body := err.ClientErrorBody(RelayFormatOpenAI, "").(OpenAIErrorResponse)
 	require.Equal(t, "invalid api key", body.Error.Message)
-	require.Equal(t, "authentication_error", body.Error.Type)
+	require.Equal(t, "new_api_error", body.Error.Type)
 	require.Equal(t, string(ErrorCodeInvalidRequest), body.Error.Code)
 }
 
@@ -131,7 +131,7 @@ func TestChannelConfigurationErrorIsNotTreatedAsUpstream(t *testing.T) {
 
 	body := err.ClientErrorBody(RelayFormatOpenAI, "").(OpenAIErrorResponse)
 	require.Equal(t, "model mapped target not found", body.Error.Message)
-	require.Equal(t, "invalid_request_error", body.Error.Type)
+	require.Equal(t, "new_api_error", body.Error.Type)
 	require.Equal(t, string(ErrorCodeChannelModelMappedError), body.Error.Code)
 }
 

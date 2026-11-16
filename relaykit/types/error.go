@@ -14,9 +14,9 @@ import (
 type OpenAIError struct {
 	Message string `json:"message"`
 	Type    string `json:"type"`
-	// Param names the request field at fault, or is null: OpenAI clients
-	// distinguish "no parameter" from an empty name.
-	Param    any             `json:"param"`
+	// Param names the request field at fault. It is omitted when no field is at
+	// fault, matching the project's client error envelope.
+	Param    any             `json:"param,omitempty"`
 	Code     any             `json:"code"`
 	Metadata json.RawMessage `json:"metadata,omitempty"`
 }
@@ -405,8 +405,7 @@ func (e *NewAPIError) ClientOpenAIError(requestID string, upstreamURLs ...string
 	}
 	return OpenAIError{
 		Message: e.ClientMessage(requestID, upstreamURLs...),
-		Type:    openAIClientErrorType(e.ClientStatusCode()),
-		Param:   nil,
+		Type:    string(ErrorTypeNewAPIError),
 		Code:    code,
 	}
 }
@@ -458,26 +457,6 @@ func (e *NewAPIError) ClientStreamErrorBody(format RelayFormat, requestID string
 		}
 	default:
 		return e.ClientErrorBody(format, requestID, upstreamURLs...)
-	}
-}
-
-// openAIClientErrorType maps a status to the type OpenAI clients classify on.
-func openAIClientErrorType(status int) string {
-	switch {
-	case status == http.StatusUnauthorized:
-		return "authentication_error"
-	case status == http.StatusForbidden:
-		return "permission_error"
-	case status == http.StatusNotFound:
-		return "not_found_error"
-	case status == http.StatusTooManyRequests:
-		return "rate_limit_error"
-	case status >= http.StatusInternalServerError:
-		return "server_error"
-	case status >= http.StatusBadRequest:
-		return "invalid_request_error"
-	default:
-		return "api_error"
 	}
 }
 
