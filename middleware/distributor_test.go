@@ -259,7 +259,7 @@ func TestDistributeHidesTaskPluginDetailsButLogsDiagnostics(t *testing.T) {
 				recorder := httptest.NewRecorder()
 				router.ServeHTTP(recorder, request)
 
-				require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+				require.Equal(t, http.StatusNotFound, recorder.Code)
 				requestID := recorder.Header().Get(common.RequestIdKey)
 				require.NotEmpty(t, requestID)
 				assert.JSONEq(t, fmt.Sprintf(`{"error":{"message":%q,"type":"new_api_error","code":"model_not_found"}}`,

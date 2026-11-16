@@ -329,13 +329,17 @@ func ErrOptionWithUpstreamFailure() NewAPIErrorOptions {
 	}
 }
 
-// ClientStatusCode is the status code safe to send to the caller: upstream
-// failures collapse to 500 so upstream state codes (401, 429, ...) cannot leak.
+// ClientStatusCode is the status code safe to send to the caller. Client-caused
+// upstream failures keep their 4xx status so protocol clients can display the
+// sanitized error instead of treating every rejected request as a server fault.
 func (e *NewAPIError) ClientStatusCode() int {
-	if e.IsUpstreamFailure() {
+	if e == nil || e.StatusCode == 0 {
 		return http.StatusInternalServerError
 	}
-	if e == nil || e.StatusCode == 0 {
+	if e.errorCode == ErrorCodeModelNotFound {
+		return http.StatusNotFound
+	}
+	if e.IsUpstreamFailure() && e.StatusCode >= http.StatusInternalServerError {
 		return http.StatusInternalServerError
 	}
 	return e.StatusCode
@@ -369,12 +373,8 @@ func (e *NewAPIError) ClientMessage(requestID string, upstreamURLs ...string) st
 // ClientErrorStatus is the status the payload reports as the failure's code. It
 // is the channel's own status for an upstream failure and our status otherwise.
 //
-// The HTTP status line and the error type stay 500/server_error either way: the
-// caller's request failed on our side, and the provider's answer must not be
-// restated as a verdict on the caller's request. This number only reaches the
-// caller through the protocol's code field, so a client can still tell a
-// provider rate limit from a provider rejection without seeing a word the
-// provider wrote.
+// The status line uses the same client-safe value, while the message remains
+// sanitized so provider details never reach the caller.
 func (e *NewAPIError) ClientErrorStatus() int {
 	if e != nil && e.IsUpstreamFailure() && e.StatusCode >= 400 && e.StatusCode <= 599 {
 		return e.StatusCode

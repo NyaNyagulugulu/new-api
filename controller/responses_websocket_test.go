@@ -811,7 +811,7 @@ func TestResponsesWebSocketInitialUpstreamRejectionRefundsReservation(t *testing
 		status                                int
 	}{
 		// Whatever the upstream frame says, the caller sees one generic failure.
-		{name: "structured error", upstream: `{"type":"error","response_id":"rejected","status":400,"error":{"type":"invalid_request_error","code":"invalid_input","message":"Invalid input"}}`, status: http.StatusInternalServerError, wantType: "new_api_error", wantMessage: types.UpstreamFailureMessage},
+		{name: "structured error", upstream: `{"type":"error","response_id":"rejected","status":400,"error":{"type":"invalid_request_error","code":"invalid_input","message":"Invalid input"}}`, status: http.StatusBadRequest, wantType: "new_api_error", wantMessage: types.UpstreamFailureMessage},
 		{name: "bare error", upstream: `{"type":"error","status":500,"message":"upstream rejected"}`, status: http.StatusInternalServerError, wantType: "new_api_error", wantMessage: types.UpstreamFailureMessage},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1040,9 +1040,7 @@ func TestResponsesHTTPHealthCountsFinalResult(t *testing.T) {
 			fixture.closeAndWait(t)
 			assert.Equal(t, int64(tc.attempts), attempts.Load())
 			if !tc.success {
-				// The upstream status still drives retry and health accounting, but
-				// it is never forwarded to the caller.
-				assert.Equal(t, http.StatusInternalServerError, response.StatusCode)
+				assert.Equal(t, tc.firstStatus, response.StatusCode)
 			} else {
 				assert.Equal(t, http.StatusOK, response.StatusCode)
 			}
@@ -1397,7 +1395,7 @@ func TestResponsesWebSocketPreRoutingRejectionsFollowHealthClassification(t *tes
 		status  int
 		sampled bool
 	}{
-		{name: "no eligible channel", status: http.StatusServiceUnavailable, sampled: true, reject: func(t *testing.T, fixture *responsesWSBillingTest) {
+		{name: "no eligible channel", status: http.StatusNotFound, sampled: true, reject: func(t *testing.T, fixture *responsesWSBillingTest) {
 			require.NoError(t, model.DB.Model(&model.Ability{}).Where("channel_id = ?", fixture.channel.Id).Update("enabled", false).Error)
 		}},
 		{name: "token model limit", status: http.StatusForbidden, reject: func(t *testing.T, fixture *responsesWSBillingTest) {

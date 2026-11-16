@@ -21,12 +21,12 @@ func TestUpstreamFailureIsSanitizedForCaller(t *testing.T) {
 	err := upstreamError()
 
 	require.True(t, err.IsUpstreamFailure())
-	require.Equal(t, http.StatusInternalServerError, err.ClientStatusCode())
+	require.Equal(t, http.StatusTooManyRequests, err.ClientStatusCode())
 
 	body := err.ClientErrorBody(RelayFormatOpenAI, "req-1").(OpenAIErrorResponse)
 	require.Equal(t, UpstreamFailureMessage+" (request id: req-1)", body.Error.Message)
-	// The status line stays 500 because the request failed here; the provider's
-	// 429 survives only in the code, which names no provider detail.
+	// The provider's 429 is safe to expose as a status and lets clients show the
+	// sanitized error instead of a generic server-failure message.
 	require.Equal(t, "new_api_error", body.Error.Type)
 	require.Equal(t, "429", body.Error.Code)
 	require.Nil(t, body.Error.Param)
@@ -45,7 +45,7 @@ func TestAnthropicEnvelopeUsesAnthropicErrorTypes(t *testing.T) {
 
 	body := err.ClientErrorBody(RelayFormatClaude, "").(ClaudeErrorResponse)
 	require.Equal(t, "error", body.Type)
-	require.Equal(t, "api_error", body.Error.Type)
+	require.Equal(t, "rate_limit_error", body.Error.Type)
 	require.Equal(t, UpstreamFailureMessage, body.Error.Message)
 }
 
@@ -71,19 +71,18 @@ func TestResponsesStreamErrorIsAFlatEvent(t *testing.T) {
 func TestUpstreamStatusSurvivesWithoutLeakingTheBody(t *testing.T) {
 	err := upstreamError()
 
-	// Every protocol reports the provider status somewhere a client reads, and
-	// nowhere else: the HTTP status line stays 500.
-	require.Equal(t, http.StatusInternalServerError, err.ClientStatusCode())
+	// Every protocol reports the provider status, while the message stays
+	// sanitized.
+	require.Equal(t, http.StatusTooManyRequests, err.ClientStatusCode())
 	require.Equal(t, http.StatusTooManyRequests, err.ClientErrorStatus())
 
 	openAI := err.ClientErrorBody(RelayFormatOpenAI, "").(OpenAIErrorResponse)
 	require.Equal(t, "429", openAI.Error.Code)
 	require.Equal(t, "new_api_error", openAI.Error.Type)
 
-	// Anthropic has no code field: its error.type is the only classification, so
-	// it reports our 500, never the provider's status.
+	// Anthropic has no code field: its error.type is the only classification.
 	claude := err.ClientErrorBody(RelayFormatClaude, "").(ClaudeErrorResponse)
-	require.Equal(t, "api_error", claude.Error.Type)
+	require.Equal(t, "rate_limit_error", claude.Error.Type)
 
 	gemini := err.ClientErrorBody(RelayFormatGemini, "").(GeminiErrorResponse)
 	require.Equal(t, http.StatusTooManyRequests, gemini.Error.Code)
@@ -123,6 +122,15 @@ func TestLocalErrorKeepsItsOwnMessageAndStatus(t *testing.T) {
 	encoded, marshalErr := json.Marshal(body)
 	require.NoError(t, marshalErr)
 	require.Equal(t, `{"error":{"code":"invalid_request","message":"invalid api key","type":"new_api_error"}}`, string(encoded))
+}
+
+func TestModelNotFoundUsesClientErrorStatus(t *testing.T) {
+	err := NewErrorWithStatusCode(errors.New("model is unavailable"), ErrorCodeModelNotFound, http.StatusServiceUnavailable)
+
+	require.Equal(t, http.StatusNotFound, err.ClientStatusCode())
+	encoded, marshalErr := json.Marshal(err.ClientErrorBody(RelayFormatOpenAI, ""))
+	require.NoError(t, marshalErr)
+	require.Equal(t, `{"error":{"code":"model_not_found","message":"model is unavailable","type":"new_api_error"}}`, string(encoded))
 }
 
 func TestChannelConfigurationErrorIsNotTreatedAsUpstream(t *testing.T) {

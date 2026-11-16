@@ -27,7 +27,7 @@ func abortWithRelayError(c *gin.Context, statusCode int, message string, code ..
 		StatusCode: statusCode,
 	}) {
 		apiErr := types.NewErrorWithStatusCode(errors.New(message), codeStr, statusCode)
-		c.JSON(statusCode, apiErr.ClientErrorBody(types.RelayFormatForPath(c.Request.URL.Path), c.GetString(common.RequestIdKey)))
+		c.JSON(apiErr.ClientStatusCode(), apiErr.ClientErrorBody(types.RelayFormatForPath(c.Request.URL.Path), c.GetString(common.RequestIdKey)))
 	}
 	c.Abort()
 	logger.LogError(c.Request.Context(), common.LogText("user %d | %s", userId, message))
