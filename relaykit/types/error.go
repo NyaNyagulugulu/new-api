@@ -12,12 +12,12 @@ import (
 )
 
 type OpenAIError struct {
+	Code    any    `json:"code"`
 	Message string `json:"message"`
 	Type    string `json:"type"`
 	// Param names the request field at fault. It is omitted when no field is at
 	// fault, matching the project's client error envelope.
 	Param    any             `json:"param,omitempty"`
-	Code     any             `json:"code"`
 	Metadata json.RawMessage `json:"metadata,omitempty"`
 }
 

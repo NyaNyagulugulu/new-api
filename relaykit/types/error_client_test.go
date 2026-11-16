@@ -119,6 +119,10 @@ func TestLocalErrorKeepsItsOwnMessageAndStatus(t *testing.T) {
 	require.Equal(t, "invalid api key", body.Error.Message)
 	require.Equal(t, "new_api_error", body.Error.Type)
 	require.Equal(t, string(ErrorCodeInvalidRequest), body.Error.Code)
+
+	encoded, marshalErr := json.Marshal(body)
+	require.NoError(t, marshalErr)
+	require.Equal(t, `{"error":{"code":"invalid_request","message":"invalid api key","type":"new_api_error"}}`, string(encoded))
 }
 
 func TestChannelConfigurationErrorIsNotTreatedAsUpstream(t *testing.T) {
