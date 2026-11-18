@@ -6,33 +6,98 @@ import (
 	"github.com/QuantumNous/new-api/common"
 )
 
-// shapeRequest makes one request body read as an official CLI session. Every
-// step is a check the free tier performs, so a body missing any of them is
-// refused before the model is reached:
-//
-//  1. the official system prompt, folded into the wire's system slot;
-//  2. every caller tool renamed to an opaque wire name, so no foreign client's
-//     tool vocabulary is visible;
-//  3. the full official tool set appended;
-//  4. every outbound reference to a renamed tool rewritten to match, keeping
-//     the body self-consistent;
-//  5. tool_choice "none" dropped — the gate refuses it outright.
-//
-// It returns the wire name -> caller name map used to restore the caller's
-// spelling on the response side.
+// shapeRequest adds the CLI compatibility envelope without changing the
+// caller's tool names or schemas. Only tools declared by the caller are
+// executable; compatibility-only declarations must never be selected.
 func shapeRequest(body map[string]any, shape string, model string) map[string]string {
 	if body == nil {
 		return nil
 	}
 	reverse := make(map[string]string)
 	injectSystemPrompt(body, shape, model)
-	renameTools(body, shape, reverse)
+	appendClientToolPolicy(body, shape)
+	tools, _ := body["tools"].([]any)
+	body["tools"] = append(tools, missingOfficialTools(tools, shape)...)
 	rewriteToolReferences(body, shape, reverse)
 	dropNoneToolChoice(body, shape)
 	if shape == "chat" && body["stream"] == true {
 		streamOptionsFor(body)
 	}
 	return reverse
+}
+
+// appendClientToolPolicy distinguishes executable client tools from the
+// declarations required by the upstream CLI compatibility envelope.
+func appendClientToolPolicy(body map[string]any, shape string) {
+	const marker = "# Client tool availability"
+	names := make([]string, 0)
+	tools, _ := body["tools"].([]any)
+	for _, raw := range tools {
+		tool, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if name, _ := toolNameHolder(tool, shape); name != "" {
+			names = append(names, name)
+		}
+	}
+	policy := marker + "\n"
+	if len(names) == 0 {
+		policy += "The client has not provided any executable tools. Answer in text and do not emit tool calls."
+	} else {
+		policy += "The only executable tools provided by this client are: " + strings.Join(names, ", ") + ".\n" +
+			"Call these tools directly using their declared names and JSON parameter schemas. " +
+			"Tools supplied by an MCP server are called in exactly the same way as other client tools. " +
+			"All other tool declarations and tool catalogs earlier in these instructions are compatibility metadata, not client capabilities. " +
+			"Never select a tool outside the executable list, invent a tool name, translate its arguments to another tool schema, " +
+			"or wrap a tool call in execute or another tool. Use execute only if the client explicitly supplied it."
+	}
+	switch shape {
+	case "flat":
+		existing, _ := body["instructions"].(string)
+		if !strings.Contains(existing, marker) {
+			body["instructions"] = existing + "\n\n" + policy
+		}
+	case "claude":
+		switch system := body["system"].(type) {
+		case string:
+			if !strings.Contains(system, marker) {
+				body["system"] = system + "\n\n" + policy
+			}
+		case []any:
+			for _, raw := range system {
+				block, _ := raw.(map[string]any)
+				if text, _ := block["text"].(string); strings.Contains(text, marker) {
+					return
+				}
+			}
+			body["system"] = append(system, map[string]any{"type": "text", "text": policy})
+		}
+	default:
+		messages, _ := body["messages"].([]any)
+		for _, raw := range messages {
+			message, _ := raw.(map[string]any)
+			role, _ := message["role"].(string)
+			if role != "system" && role != "developer" {
+				continue
+			}
+			switch content := message["content"].(type) {
+			case string:
+				if !strings.Contains(content, marker) {
+					message["content"] = content + "\n\n" + policy
+				}
+			case []any:
+				for _, rawPart := range content {
+					part, _ := rawPart.(map[string]any)
+					if text, _ := part["text"].(string); strings.Contains(text, marker) {
+						return
+					}
+				}
+				message["content"] = append(content, map[string]any{"type": "text", "text": policy})
+			}
+			return
+		}
+	}
 }
 
 // injectSystemPrompt prepends the official prompt to the wire's system slot. A
@@ -141,36 +206,6 @@ func prependToContent(content any, prompt string) any {
 	default:
 		return prompt
 	}
-}
-
-// renameTools keeps only the official OpenCode tool set. The anonymous free
-// tier rejects requests that declare additional caller tools; that rejection
-// is surfaced as the same misleading 429 used for quota exhaustion.
-func renameTools(body map[string]any, shape string, reverse map[string]string) {
-	official := officialToolNames()
-	tools, _ := body["tools"].([]any)
-	shaped := make([]any, 0, len(tools)+len(officialToolOrder))
-	for _, raw := range tools {
-		tool, ok := raw.(map[string]any)
-		if !ok {
-			shaped = append(shaped, raw)
-			continue
-		}
-		name, _ := toolNameHolder(tool, shape)
-		if name == "" {
-			// Responses built-ins and Anthropic server tools carry no client
-			// name and are forwarded untouched.
-			shaped = append(shaped, tool)
-			continue
-		}
-		if _, isOfficial := official[name]; isOfficial {
-			shaped = append(shaped, tool)
-			continue
-		}
-		// Caller-defined tools cannot be declared on the anonymous free wire.
-		// The official tools remain available for the model to use.
-	}
-	body["tools"] = append(shaped, missingOfficialTools(shaped, shape)...)
 }
 
 // missingOfficialTools renders only the officials the shaped list does not
@@ -335,14 +370,14 @@ func rewriteToolReferences(body map[string]any, shape string, reverse map[string
 	}
 }
 
-// dropNoneToolChoice removes tool_choice "none", which the gate refuses. The
-// Responses wire defaults to "auto" instead, as the official client does.
+// dropNoneToolChoice normalizes the unsupported "none" choice. Named and
+// required choices keep referring to the caller's preserved definitions.
 func dropNoneToolChoice(body map[string]any, shape string) {
 	if choice, ok := body["tool_choice"]; ok {
 		if shape == "chat" {
-			// The free wire only accepts the official tool set and automatic
-			// selection. Caller-specific choices would refer to removed tools.
-			body["tool_choice"] = "auto"
+			if value, ok := choice.(string); ok && value == "none" {
+				body["tool_choice"] = "auto"
+			}
 		} else if value, isString := choice.(string); isString && value == "none" {
 			delete(body, "tool_choice")
 		} else if object, isObject := choice.(map[string]any); isObject {

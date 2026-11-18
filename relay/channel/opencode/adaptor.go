@@ -17,6 +17,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 
@@ -222,9 +223,13 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	if !a.cliMode {
 		return request, nil
 	}
-	chatRequest, err := service.ResponsesRequestToChatCompletionsRequest(&request)
+	result, err := service.ConvertRequestByID(c, info, relayconvert.ConverterOpenAIResponsesToOpenAIChat, &request)
 	if err != nil {
 		return nil, fmt.Errorf("convert Responses request for the free tier: %w", err)
+	}
+	chatRequest, ok := result.Value.(*dto.GeneralOpenAIRequest)
+	if !ok {
+		return nil, fmt.Errorf("expected Chat Completions request, got %T", result.Value)
 	}
 	body, err := marshalMap(chatRequest)
 	if err != nil {
@@ -274,22 +279,19 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
 	if a.cliMode && a.freeTierStream && info != nil {
 		info.IsStream = a.clientStream
+		if !info.IsStream {
+			var bufferErr error
+			resp, bufferErr = bufferChatStream(resp)
+			if bufferErr != nil {
+				return nil, types.NewOpenAIError(bufferErr, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+			}
+		}
 	}
 	if a.cliMode && a.responsesViaChat {
 		if info.IsStream {
 			return openai.OaiChatToResponsesStreamHandler(c, info, resp)
 		}
-		if strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream") {
-			return openai.OaiChatToResponsesBufferedStreamHandler(c, info, resp)
-		}
 		return openai.OaiChatToResponsesHandler(c, info, resp)
-	}
-	if a.cliMode && a.freeTierStream && info != nil && !info.IsStream {
-		var bufferErr error
-		resp, bufferErr = bufferChatStream(resp)
-		if bufferErr != nil {
-			return nil, types.NewOpenAIError(bufferErr, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
-		}
 	}
 	if a.cliMode && len(a.reverse) > 0 {
 		resp = a.restoreResponse(c, resp, info)

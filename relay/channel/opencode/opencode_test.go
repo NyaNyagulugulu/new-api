@@ -2,16 +2,20 @@ package opencode
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -72,7 +76,7 @@ func TestProjectIDShape(t *testing.T) {
 	}
 }
 
-func TestShapeRequestDropsCallerToolsAndAppendsOfficials(t *testing.T) {
+func TestShapeRequestPreservesCallerToolsAndAppendsOfficials(t *testing.T) {
 	body := map[string]any{
 		"model": "deepseek-v4.1-flash-free",
 		"messages": []any{
@@ -93,9 +97,7 @@ func TestShapeRequestDropsCallerToolsAndAppendsOfficials(t *testing.T) {
 
 	reverse := shapeRequest(body, "chat", "deepseek-v4.1-flash-free")
 
-	if len(reverse) != 0 {
-		t.Fatalf("caller tools must not be forwarded on the free wire, got %d mappings", len(reverse))
-	}
+	assert.Empty(t, reverse)
 	if _, present := body["tool_choice"]; present {
 		if body["tool_choice"] != "auto" {
 			t.Fatalf("caller tool choice must be normalized to auto, got %v", body["tool_choice"])
@@ -103,9 +105,10 @@ func TestShapeRequestDropsCallerToolsAndAppendsOfficials(t *testing.T) {
 	}
 
 	tools, _ := body["tools"].([]any)
-	if len(tools) != len(officialToolOrder) {
-		t.Fatalf("expected %d official tools after shaping, got %d", len(officialToolOrder), len(tools))
-	}
+	require.Len(t, tools, len(officialToolOrder)+1)
+	callerTool := tools[0].(map[string]any)["function"].(map[string]any)
+	assert.Equal(t, "list_files", callerTool["name"])
+	assert.Equal(t, "List files", callerTool["description"])
 
 	messages, _ := body["messages"].([]any)
 	if len(messages) != 2 {
@@ -116,6 +119,7 @@ func TestShapeRequestDropsCallerToolsAndAppendsOfficials(t *testing.T) {
 	if !strings.Contains(content, promptMarker) {
 		t.Fatal("the official prompt was not injected")
 	}
+	assert.Contains(t, content, "only executable tools provided by this client are: list_files.")
 }
 
 func TestShapeRequestIsIdempotent(t *testing.T) {
@@ -141,7 +145,7 @@ func TestShapeRequestIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestShapeRequestKeepsToolCallHistoryWithoutForwardingCallerTools(t *testing.T) {
+func TestShapeRequestPreservesCallerToolDefinitionsAndHistory(t *testing.T) {
 	body := map[string]any{
 		"model": "big-pickle",
 		"messages": []any{
@@ -195,13 +199,10 @@ func TestShapeRequestClaudeWire(t *testing.T) {
 	if !strings.Contains(system, promptMarker) || !strings.Contains(system, "be brief") {
 		t.Fatal("the official prompt must be prepended without dropping the caller's system text")
 	}
-	if len(reverse) != 0 {
-		t.Fatalf("caller tools must not be forwarded on the free wire, got %d mappings", len(reverse))
-	}
+	assert.Empty(t, reverse)
 	tools, _ := body["tools"].([]any)
-	if len(tools) != len(officialToolOrder) {
-		t.Fatalf("expected the official set only, got %d tools", len(tools))
-	}
+	require.Len(t, tools, len(officialToolOrder)+1)
+	assert.Equal(t, "lookup", tools[0].(map[string]any)["name"])
 }
 
 func TestEnsureCompletionLimit(t *testing.T) {
@@ -376,6 +377,221 @@ func TestSetupRequestHeaderAddsOpenCodeOrganization(t *testing.T) {
 	adaptor.Init(&relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ApiKey: "sk-console-key"}})
 	assert.False(t, adaptor.cliMode)
 	assert.False(t, adaptor.ResponsesViaChat())
+}
+
+func TestResponsesClientToolsRoundTrip(t *testing.T) {
+	previousTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = previousTimeout })
+	for _, tc := range []struct {
+		name          string
+		tools         string
+		upstreamName  string
+		returnedName  string
+		namespace     string
+		arguments     string
+		returnedInput string
+	}{
+		{
+			name:         "MCP function",
+			tools:        `[{"type":"function","name":"mcp__filesystem__write_file","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}]`,
+			upstreamName: "mcp__filesystem__write_file",
+			returnedName: "mcp__filesystem__write_file",
+			arguments:    `{"path":"/tmp/tool-test.txt"}`,
+		},
+		{
+			name:          "Codex custom tool",
+			tools:         `[{"type":"custom","name":"apply_patch","format":{"type":"text"}}]`,
+			upstreamName:  "apply_patch",
+			returnedName:  "apply_patch",
+			arguments:     `{"input":"*** Begin Patch\n*** End Patch"}`,
+			returnedInput: "*** Begin Patch\n*** End Patch",
+		},
+		{
+			name:         "namespaced MCP function",
+			tools:        `[{"type":"namespace","name":"filesystem","tools":[{"type":"function","name":"read_file","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}]}]`,
+			upstreamName: "filesystem__read_file",
+			returnedName: "read_file",
+			namespace:    "filesystem",
+			arguments:    `{"path":"/tmp/tool-test.txt"}`,
+		},
+	} {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/stream=%t", tc.name, stream), func(t *testing.T) {
+				recorder := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(recorder)
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+				c.Set(common.RequestIdKey, "tool-round-trip")
+				info := &relaycommon.RelayInfo{
+					ChannelMeta: &relaycommon.ChannelMeta{
+						ApiKey: "st_test", UpstreamModelName: "deepseek-v4.1-flash-free",
+					},
+					RelayFormat: types.RelayFormatOpenAIResponses,
+					RelayMode:   relayconstant.RelayModeResponses,
+					IsStream:    stream, DisablePing: true,
+				}
+				adaptor := &Adaptor{}
+				adaptor.Init(info)
+				converted, err := adaptor.ConvertOpenAIResponsesRequest(c, info, dto.OpenAIResponsesRequest{
+					Model: "deepseek-v4.1-flash-free", Input: []byte(`"use the tool"`),
+					Tools: []byte(tc.tools), Stream: &stream,
+				})
+				require.NoError(t, err)
+				body := converted.(map[string]any)
+				tools := body["tools"].([]any)
+				assert.Equal(t, tc.upstreamName, tools[0].(map[string]any)["function"].(map[string]any)["name"])
+				prompt := body["messages"].([]any)[0].(map[string]any)["content"].(string)
+				assert.Contains(t, prompt, "only executable tools provided by this client are: "+tc.upstreamName+".")
+
+				chunk := map[string]any{
+					"id": "chat_tool", "model": "deepseek-v4.1-flash-free",
+					"choices": []any{map[string]any{
+						"index": 0, "finish_reason": nil,
+						"delta": map[string]any{"tool_calls": []any{map[string]any{
+							"index": 0, "id": "call_client", "type": "function",
+							"function": map[string]any{"name": tc.upstreamName, "arguments": tc.arguments},
+						}}},
+					}},
+				}
+				payload, err := common.Marshal(chunk)
+				require.NoError(t, err)
+				sse := "data: " + string(payload) + "\n\n" +
+					"data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n" +
+					"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":3,\"total_tokens\":5}}\n\n" +
+					"data: [DONE]\n\n"
+				upstream := &http.Response{
+					StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}},
+					Body: io.NopCloser(strings.NewReader(sse)),
+				}
+				usage, apiErr := adaptor.DoResponse(c, upstream, info)
+				require.Nil(t, apiErr)
+				require.NotNil(t, usage)
+				assert.Equal(t, 5, usage.(*dto.Usage).TotalTokens)
+				var response map[string]any
+				if stream {
+					for line := range strings.SplitSeq(recorder.Body.String(), "\n") {
+						data, ok := strings.CutPrefix(line, "data:")
+						if !ok {
+							continue
+						}
+						var event map[string]any
+						require.NoError(t, common.UnmarshalJsonStr(strings.TrimSpace(data), &event))
+						if event["type"] == "response.completed" {
+							response, _ = event["response"].(map[string]any)
+						}
+					}
+				} else {
+					require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+				}
+				require.NotNil(t, response)
+				output, ok := response["output"].([]any)
+				require.True(t, ok)
+				var toolCall map[string]any
+				for _, raw := range output {
+					item, _ := raw.(map[string]any)
+					if item["call_id"] == "call_client" {
+						toolCall = item
+					}
+				}
+				require.NotNil(t, toolCall)
+				assert.Equal(t, tc.returnedName, toolCall["name"])
+				if tc.namespace != "" {
+					assert.Equal(t, tc.namespace, toolCall["namespace"])
+				}
+				if tc.returnedInput != "" {
+					assert.Equal(t, "custom_tool_call", toolCall["type"])
+					assert.Equal(t, tc.returnedInput, toolCall["input"])
+				} else {
+					assert.Equal(t, "function_call", toolCall["type"])
+					assert.Equal(t, tc.arguments, toolCall["arguments"])
+				}
+
+				outputType := "function_call_output"
+				if tc.returnedInput != "" {
+					outputType = "custom_tool_call_output"
+				}
+				history, err := common.Marshal([]any{
+					map[string]any{"role": "user", "content": "use the tool"},
+					toolCall,
+					map[string]any{
+						"type": outputType, "call_id": "call_client",
+						"output": "client tool completed successfully",
+					},
+				})
+				require.NoError(t, err)
+				nextAdaptor := &Adaptor{}
+				nextAdaptor.Init(info)
+				next, err := nextAdaptor.ConvertOpenAIResponsesRequest(c, info, dto.OpenAIResponsesRequest{
+					Model: "deepseek-v4.1-flash-free", Input: history,
+					Tools: []byte(tc.tools), Stream: &stream,
+				})
+				require.NoError(t, err)
+				messages := next.(map[string]any)["messages"].([]any)
+				var replayedCall, replayedResult map[string]any
+				for _, raw := range messages {
+					message := raw.(map[string]any)
+					if calls, ok := message["tool_calls"].([]any); ok && len(calls) > 0 {
+						replayedCall = calls[0].(map[string]any)
+					}
+					if message["role"] == "tool" {
+						replayedResult = message
+					}
+				}
+				require.NotNil(t, replayedCall)
+				assert.Equal(t, "call_client", replayedCall["id"])
+				function := replayedCall["function"].(map[string]any)
+				assert.Equal(t, tc.upstreamName, function["name"])
+				assert.JSONEq(t, tc.arguments, function["arguments"].(string))
+				require.NotNil(t, replayedResult)
+				assert.Equal(t, "call_client", replayedResult["tool_call_id"])
+				assert.Equal(t, "client tool completed successfully", replayedResult["content"])
+			})
+		}
+	}
+}
+
+func TestClientToolSchemaAndChoiceArePreserved(t *testing.T) {
+	for _, name := range []string{"exec_command", "execute", "mcp__filesystem__write_file"} {
+		t.Run(name, func(t *testing.T) {
+			tool := map[string]any{
+				"type": "function",
+				"function": map[string]any{
+					"name": name, "description": "Client-specific tool",
+					"parameters": map[string]any{
+						"type":       "object",
+						"properties": map[string]any{"cmd": map[string]any{"type": "string"}},
+						"required":   []any{"cmd"}, "additionalProperties": false,
+					},
+				},
+			}
+			choice := map[string]any{"type": "function", "function": map[string]any{"name": name}}
+			body := map[string]any{
+				"model":    "deepseek-v4.1-flash-free",
+				"messages": []any{map[string]any{"role": "user", "content": "use the client tool"}},
+				"tools":    []any{tool}, "tool_choice": choice,
+			}
+			before, err := common.Marshal(tool)
+			require.NoError(t, err)
+			shapeRequest(body, "chat", "deepseek-v4.1-flash-free")
+			tools := body["tools"].([]any)
+			after, err := common.Marshal(tools[0])
+			require.NoError(t, err)
+			assert.JSONEq(t, string(before), string(after))
+			assert.Equal(t, choice, body["tool_choice"])
+			count := 0
+			for _, raw := range tools {
+				if toolName, _ := toolNameHolder(raw.(map[string]any), "chat"); toolName == name {
+					count++
+				}
+			}
+			assert.Equal(t, 1, count)
+		})
+	}
+
+	body := map[string]any{"messages": []any{map[string]any{"role": "user", "content": "hello"}}}
+	shapeRequest(body, "chat", "mimo-v2.6-flash-free")
+	prompt := body["messages"].([]any)[0].(map[string]any)["content"].(string)
+	assert.Contains(t, prompt, "The client has not provided any executable tools.")
 }
 
 func TestRestoreStreamToolNames(t *testing.T) {
