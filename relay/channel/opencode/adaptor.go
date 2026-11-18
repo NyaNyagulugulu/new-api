@@ -16,6 +16,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -39,7 +40,8 @@ type Adaptor struct {
 	// freeTierStream records that the upstream request was forced into the
 	// official streaming shape. Non-streaming callers are buffered back into
 	// a normal OpenAI response in DoResponse.
-	freeTierStream bool
+	freeTierStream   bool
+	responsesViaChat bool
 	// reverse maps the opaque wire name of a shaped tool back to the caller's.
 	reverse map[string]string
 }
@@ -48,6 +50,7 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 	a.openaiAdaptor.Init(info)
 	a.claudeAdaptor.Init(info)
 	a.freeTierStream = false
+	a.responsesViaChat = false
 	if info == nil || info.ChannelMeta == nil {
 		a.keyless = true
 		return
@@ -73,6 +76,9 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	}
 	switch info.RelayMode {
 	case relayconstant.RelayModeResponses:
+		if a.keyless {
+			return base + ChatPath, nil
+		}
 		return base + ResponsesPath, nil
 	case relayconstant.RelayModeChatCompletions:
 		return base + ChatPath, nil
@@ -167,12 +173,24 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	if !a.keyless {
 		return request, nil
 	}
-	body, err := marshalMap(request)
+	chatRequest, err := service.ResponsesRequestToChatCompletionsRequest(&request)
+	if err != nil {
+		return nil, fmt.Errorf("convert Responses request for the free tier: %w", err)
+	}
+	body, err := marshalMap(chatRequest)
 	if err != nil {
 		return nil, fmt.Errorf("encode request for the free tier: %w", err)
 	}
-	a.reverse = shapeRequest(body, "flat", upstreamModel(info, request.Model))
+	a.freeTierStream = true
+	a.responsesViaChat = true
+	body["stream"] = true
+	a.reverse = shapeRequest(body, "chat", upstreamModel(info, request.Model))
+	ensureCompletionLimit(body, "chat")
 	return body, nil
+}
+
+func (a *Adaptor) ResponsesViaChat() bool {
+	return a.keyless
 }
 
 func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeminiChatRequest) (any, error) {
@@ -203,6 +221,15 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+	if a.keyless && a.responsesViaChat {
+		if info.IsStream {
+			return openai.OaiChatToResponsesStreamHandler(c, info, resp)
+		}
+		if strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream") {
+			return openai.OaiChatToResponsesBufferedStreamHandler(c, info, resp)
+		}
+		return openai.OaiChatToResponsesHandler(c, info, resp)
+	}
 	if a.keyless && a.freeTierStream && info != nil && !info.IsStream {
 		var bufferErr error
 		resp, bufferErr = bufferChatStream(resp)

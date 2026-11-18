@@ -9,7 +9,10 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -257,6 +260,34 @@ func TestAdaptorUsesKeylessLaneForEmptyKey(t *testing.T) {
 		t.Fatal("a real key must use the console credential path")
 	}
 	assert.False(t, adaptor.freeTierStream)
+}
+
+func TestResponsesRequestUsesChatWireForKeylessFreeTier(t *testing.T) {
+	adaptor := &Adaptor{}
+	info := &relaycommon.RelayInfo{
+		UserId:      1,
+		RelayFormat: types.RelayFormatOpenAIResponses,
+		RelayMode:   relayconstant.RelayModeResponses,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ApiKey:            "EMPTY",
+			ChannelId:         24,
+			UpstreamModelName: "deepseek-v4.1-flash-free",
+		},
+	}
+	adaptor.Init(info)
+
+	converted, err := adaptor.ConvertOpenAIResponsesRequest(nil, info, dto.OpenAIResponsesRequest{
+		Model:  "deepseek-v4.1-flash-free",
+		Input:  []byte(`[{"role":"user","content":"hi"}]`),
+		Stream: lo.ToPtr(true),
+	})
+	require.NoError(t, err)
+	body, ok := converted.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, true, body["stream"])
+	assert.Equal(t, completionLimit, body["max_completion_tokens"])
+	assert.Contains(t, body, "messages")
+	assert.NotContains(t, body, "input")
 }
 
 func TestSetupRequestHeaderReplacesCallerAuth(t *testing.T) {

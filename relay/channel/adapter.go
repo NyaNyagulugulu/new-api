@@ -41,6 +41,13 @@ type ResponsesOnlyAdaptor interface {
 	ResponsesOnly() bool
 }
 
+// ResponsesViaChatAdaptor marks channels that accept Responses clients but
+// speak Chat Completions upstream. Relay converts the upstream chat response
+// back to the Responses protocol for the caller.
+type ResponsesViaChatAdaptor interface {
+	ResponsesViaChat() bool
+}
+
 // ResponsesRequestFinalizer applies provider-specific rules to the effective
 // JSON request after channel parameter overrides. Passthrough bypasses this hook.
 type ResponsesRequestFinalizer interface {

@@ -1,9 +1,11 @@
 package openai
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -15,6 +17,25 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
+
+func OaiChatToResponsesBufferedStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+	recorder := httptest.NewRecorder()
+	streamContext, _ := gin.CreateTestContext(recorder)
+	streamContext.Request = c.Request
+	usage, apiErr := OaiChatToResponsesStreamHandler(streamContext, info, resp)
+	if apiErr != nil {
+		return usage, apiErr
+	}
+	info.IsStream = false
+	buffered := &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type": []string{"text/event-stream"},
+		},
+		Body: io.NopCloser(bytes.NewReader(recorder.Body.Bytes())),
+	}
+	return OaiResponsesBufferedStreamHandler(c, info, buffered)
+}
 
 func OaiChatToResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
 	if resp == nil || resp.Body == nil {

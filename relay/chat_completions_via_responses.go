@@ -189,6 +189,30 @@ func relayResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, adaptor 
 		return nil, newApiErr
 	}
 
+	if viaChat, ok := adaptor.(channel.ResponsesViaChatAdaptor); ok && viaChat.ResponsesViaChat() {
+		info.IsStream = clientStream || upstreamStream
+		if upstreamStream && clientStream {
+			usage, newApiErr := openaichannel.OaiChatToResponsesStreamHandler(c, info, httpResp)
+			if newApiErr != nil {
+				service.ResetStatusCode(newApiErr, statusCodeMappingStr)
+			}
+			return usage, newApiErr
+		}
+		if upstreamStream {
+			info.IsStream = false
+			usage, newApiErr := openaichannel.OaiChatToResponsesBufferedStreamHandler(c, info, httpResp)
+			if newApiErr != nil {
+				service.ResetStatusCode(newApiErr, statusCodeMappingStr)
+			}
+			return usage, newApiErr
+		}
+		usage, newApiErr := openaichannel.OaiChatToResponsesHandler(c, info, httpResp)
+		if newApiErr != nil {
+			service.ResetStatusCode(newApiErr, statusCodeMappingStr)
+		}
+		return usage, newApiErr
+	}
+
 	if upstreamStream && clientStream {
 		usage, newApiErr := openaichannel.OaiResponsesToChatStreamHandler(c, info, httpResp)
 		if newApiErr != nil {
