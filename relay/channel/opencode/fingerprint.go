@@ -130,25 +130,6 @@ type officialTool struct {
 	Parameters  any
 }
 
-// renameWireName is the opaque name one client tool travels under. The free
-// tier refuses a body that still carries another client's tool vocabulary, so
-// no client tool name reaches the wire.
-func renameWireName(name string, used map[string]struct{}) string {
-	sum := sha256.Sum256([]byte(name))
-	base := "clint_" + hex.EncodeToString(sum[:])[:12]
-	if _, taken := used[base]; !taken {
-		used[base] = struct{}{}
-		return base
-	}
-	for suffix := 2; ; suffix++ {
-		candidate := fmt.Sprintf("%s_%d", base, suffix)
-		if _, taken := used[candidate]; !taken {
-			used[candidate] = struct{}{}
-			return candidate
-		}
-	}
-}
-
 // restoreToolName maps a wire name back to the caller's spelling. Unknown names
 // (the injected officials, or a name the caller never declared) pass through.
 func restoreToolName(name string, reverse map[string]string) string {

@@ -50,7 +50,7 @@ func TestProjectIDShape(t *testing.T) {
 	}
 }
 
-func TestShapeRequestRenamesToolsAndAppendsOfficials(t *testing.T) {
+func TestShapeRequestDropsCallerToolsAndAppendsOfficials(t *testing.T) {
 	body := map[string]any{
 		"model": "deepseek-v4.1-flash-free",
 		"messages": []any{
@@ -71,28 +71,18 @@ func TestShapeRequestRenamesToolsAndAppendsOfficials(t *testing.T) {
 
 	reverse := shapeRequest(body, "chat", "deepseek-v4.1-flash-free")
 
-	if len(reverse) != 1 {
-		t.Fatalf("expected one renamed tool, got %d", len(reverse))
-	}
-	var wire string
-	for name := range reverse {
-		wire = name
-	}
-	if !strings.HasPrefix(wire, "clint_") {
-		t.Fatalf("wire name %q does not use the opaque prefix", wire)
+	if len(reverse) != 0 {
+		t.Fatalf("caller tools must not be forwarded on the free wire, got %d mappings", len(reverse))
 	}
 	if _, present := body["tool_choice"]; present {
-		t.Fatal("tool_choice none must be dropped: the gate refuses it")
+		if body["tool_choice"] != "auto" {
+			t.Fatalf("caller tool choice must be normalized to auto, got %v", body["tool_choice"])
+		}
 	}
 
 	tools, _ := body["tools"].([]any)
-	if len(tools) != 1+len(officialToolOrder) {
-		t.Fatalf("expected %d tools after shaping, got %d", 1+len(officialToolOrder), len(tools))
-	}
-	first, _ := tools[0].(map[string]any)
-	function, _ := first["function"].(map[string]any)
-	if function["name"] != wire {
-		t.Fatalf("caller tool was not renamed: %v", function["name"])
+	if len(tools) != len(officialToolOrder) {
+		t.Fatalf("expected %d official tools after shaping, got %d", len(officialToolOrder), len(tools))
 	}
 
 	messages, _ := body["messages"].([]any)
@@ -129,7 +119,7 @@ func TestShapeRequestIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestShapeRequestRewritesToolCallHistory(t *testing.T) {
+func TestShapeRequestKeepsToolCallHistoryWithoutForwardingCallerTools(t *testing.T) {
 	body := map[string]any{
 		"model": "big-pickle",
 		"messages": []any{
@@ -158,11 +148,11 @@ func TestShapeRequestRewritesToolCallHistory(t *testing.T) {
 	calls, _ := history["tool_calls"].([]any)
 	call, _ := calls[0].(map[string]any)
 	function, _ := call["function"].(map[string]any)
-	if function["name"] == "search" {
-		t.Fatal("tool-call history kept the caller's tool name")
+	if function["name"] != "search" {
+		t.Fatalf("tool-call history should remain caller-readable, got %q", function["name"])
 	}
 	if restored := restoreToolName(function["name"].(string), reverse); restored != "search" {
-		t.Fatalf("wire name did not map back to the caller's spelling: %q", restored)
+		t.Fatalf("tool-call history changed unexpectedly: %q", restored)
 	}
 }
 
@@ -183,12 +173,12 @@ func TestShapeRequestClaudeWire(t *testing.T) {
 	if !strings.Contains(system, promptMarker) || !strings.Contains(system, "be brief") {
 		t.Fatal("the official prompt must be prepended without dropping the caller's system text")
 	}
-	if len(reverse) != 1 {
-		t.Fatalf("expected one renamed tool, got %d", len(reverse))
+	if len(reverse) != 0 {
+		t.Fatalf("caller tools must not be forwarded on the free wire, got %d mappings", len(reverse))
 	}
 	tools, _ := body["tools"].([]any)
-	if len(tools) != 1+len(officialToolOrder) {
-		t.Fatalf("expected the official set to be appended, got %d tools", len(tools))
+	if len(tools) != len(officialToolOrder) {
+		t.Fatalf("expected the official set only, got %d tools", len(tools))
 	}
 }
 

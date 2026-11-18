@@ -143,15 +143,11 @@ func prependToContent(content any, prompt string) any {
 	}
 }
 
-// renameTools hides every caller tool behind an opaque wire name and appends
-// the official set. A declaration that already is an official tool keeps its
-// name and is not appended twice.
+// renameTools keeps only the official OpenCode tool set. The anonymous free
+// tier rejects requests that declare additional caller tools; that rejection
+// is surfaced as the same misleading 429 used for quota exhaustion.
 func renameTools(body map[string]any, shape string, reverse map[string]string) {
 	official := officialToolNames()
-	used := make(map[string]struct{}, len(official))
-	for name := range official {
-		used[name] = struct{}{}
-	}
 	tools, _ := body["tools"].([]any)
 	shaped := make([]any, 0, len(tools)+len(officialToolOrder))
 	for _, raw := range tools {
@@ -160,7 +156,7 @@ func renameTools(body map[string]any, shape string, reverse map[string]string) {
 			shaped = append(shaped, raw)
 			continue
 		}
-		name, holder := toolNameHolder(tool, shape)
+		name, _ := toolNameHolder(tool, shape)
 		if name == "" {
 			// Responses built-ins and Anthropic server tools carry no client
 			// name and are forwarded untouched.
@@ -171,19 +167,9 @@ func renameTools(body map[string]any, shape string, reverse map[string]string) {
 			shaped = append(shaped, tool)
 			continue
 		}
-		if strings.HasPrefix(name, "clint_") {
-			// Already shaped on an earlier pass.
-			shaped = append(shaped, tool)
-			continue
-		}
-		wire := renameWireName(name, used)
-		reverse[wire] = name
-		holder["name"] = wire
-		shaped = append(shaped, tool)
+		// Caller-defined tools cannot be declared on the anonymous free wire.
+		// The official tools remain available for the model to use.
 	}
-	// A body that already carries the whole official set was shaped on an
-	// earlier pass (a retried or resumed turn): appending again would declare
-	// every official tool twice, which the gate reads as a different client.
 	body["tools"] = append(shaped, missingOfficialTools(shaped, shape)...)
 }
 
@@ -353,7 +339,11 @@ func rewriteToolReferences(body map[string]any, shape string, reverse map[string
 // Responses wire defaults to "auto" instead, as the official client does.
 func dropNoneToolChoice(body map[string]any, shape string) {
 	if choice, ok := body["tool_choice"]; ok {
-		if value, isString := choice.(string); isString && value == "none" {
+		if shape == "chat" {
+			// The free wire only accepts the official tool set and automatic
+			// selection. Caller-specific choices would refer to removed tools.
+			body["tool_choice"] = "auto"
+		} else if value, isString := choice.(string); isString && value == "none" {
 			delete(body, "tool_choice")
 		} else if object, isObject := choice.(map[string]any); isObject {
 			if kind, _ := object["type"].(string); kind == "none" {
