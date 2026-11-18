@@ -3,8 +3,13 @@ package opencode
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
+	"net/http"
+	"slices"
 	"strings"
+
+	"github.com/QuantumNous/new-api/common"
 )
 
 // restoringStream rewrites opaque tool names back to the caller's spelling while
@@ -62,4 +67,130 @@ func (s *restoringStream) Read(buffer []byte) (int, error) {
 func (s *restoringStream) Close() error {
 	s.done = true
 	return s.source.Close()
+}
+
+func bufferChatStream(resp *http.Response) (*http.Response, error) {
+	if resp == nil || resp.Body == nil {
+		return resp, fmt.Errorf("invalid OpenCode stream response")
+	}
+	defer resp.Body.Close()
+
+	result := map[string]any{
+		"object": "chat.completion",
+		"choices": []any{
+			map[string]any{
+				"index": 0,
+				"message": map[string]any{
+					"role":    "assistant",
+					"content": "",
+				},
+			},
+		},
+	}
+	choice := result["choices"].([]any)[0].(map[string]any)
+	message := choice["message"].(map[string]any)
+	toolCalls := make(map[int]map[string]any)
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 32*1024), 4*1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		data, ok := strings.CutPrefix(line, "data:")
+		if !ok {
+			continue
+		}
+		data = strings.TrimSpace(data)
+		if data == "" {
+			continue
+		}
+		if data == "[DONE]" {
+			break
+		}
+
+		var chunk map[string]any
+		if err := common.UnmarshalJsonStr(data, &chunk); err != nil {
+			return resp, fmt.Errorf("decode OpenCode stream chunk: %w", err)
+		}
+		for _, key := range []string{"id", "model", "created"} {
+			if value, ok := chunk[key]; ok {
+				result[key] = value
+			}
+		}
+		if usage, ok := chunk["usage"]; ok {
+			result["usage"] = usage
+		}
+		choices, _ := chunk["choices"].([]any)
+		for _, rawChoice := range choices {
+			chunkChoice, ok := rawChoice.(map[string]any)
+			if !ok {
+				continue
+			}
+			if finishReason, ok := chunkChoice["finish_reason"]; ok && finishReason != nil {
+				choice["finish_reason"] = finishReason
+			}
+			delta, _ := chunkChoice["delta"].(map[string]any)
+			if content, ok := delta["content"].(string); ok {
+				message["content"] = message["content"].(string) + content
+			}
+			if reasoning, ok := delta["reasoning_content"].(string); ok {
+				message["reasoning_content"] = message["reasoning_content"].(string) + reasoning
+			}
+			rawToolCalls, _ := delta["tool_calls"].([]any)
+			for _, rawToolCall := range rawToolCalls {
+				toolCall, ok := rawToolCall.(map[string]any)
+				if !ok {
+					continue
+				}
+				index, _ := toolCall["index"].(float64)
+				toolIndex := int(index)
+				accumulated := toolCalls[toolIndex]
+				if accumulated == nil {
+					accumulated = map[string]any{
+						"index": toolIndex,
+						"type":  "function",
+						"function": map[string]any{
+							"name":      "",
+							"arguments": "",
+						},
+					}
+					toolCalls[toolIndex] = accumulated
+				}
+				if id, ok := toolCall["id"].(string); ok && id != "" {
+					accumulated["id"] = id
+				}
+				if function, ok := toolCall["function"].(map[string]any); ok {
+					target := accumulated["function"].(map[string]any)
+					if name, ok := function["name"].(string); ok {
+						target["name"] = name
+					}
+					if arguments, ok := function["arguments"].(string); ok {
+						target["arguments"] = target["arguments"].(string) + arguments
+					}
+				}
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return resp, fmt.Errorf("read OpenCode stream: %w", err)
+	}
+	if len(toolCalls) > 0 {
+		indices := make([]int, 0, len(toolCalls))
+		for index := range toolCalls {
+			indices = append(indices, index)
+		}
+		slices.Sort(indices)
+		accumulated := make([]any, 0, len(indices))
+		for _, index := range indices {
+			accumulated = append(accumulated, toolCalls[index])
+		}
+		message["tool_calls"] = accumulated
+	}
+	payload, err := common.Marshal(result)
+	if err != nil {
+		return resp, fmt.Errorf("encode buffered OpenCode response: %w", err)
+	}
+	resp.Body = io.NopCloser(bytes.NewReader(payload))
+	resp.ContentLength = int64(len(payload))
+	resp.Header.Set("Content-Type", "application/json")
+	resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(payload)))
+	return resp, nil
 }

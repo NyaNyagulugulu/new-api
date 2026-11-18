@@ -7,16 +7,15 @@ const ChannelName = "opencode"
 // are what a keyless channel advertises by default.
 var FreeTierModels = []string{
 	"deepseek-v4.1-flash-free",
-	"glm-5.3-flash-free",
 	"mimo-v2.6-flash-free",
 	"longcat-2.5-free",
-	"crouton-alpha-free",
 	"iceman-free",
 	"inkling-2-small-free",
 	"beam-free",
 	"flint-40b-free",
 	"nemotron-3.5-super-vl-free",
 	"nemotron-3.5-lightning-free",
+	"hy4-flash-free",
 	"big-pickle",
 }
 

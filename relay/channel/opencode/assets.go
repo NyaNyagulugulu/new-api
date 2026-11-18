@@ -25,8 +25,9 @@ var officialPromptText string
 // officialToolOrder is the captured file's key order, made explicit because a
 // decoded map does not keep it and the gate compares the declaration list.
 var officialToolOrder = []string{
-	"bash", "edit", "glob", "grep", "read",
-	"skill", "task", "todowrite", "webfetch", "write",
+	"edit", "experimental_image_generate", "glob", "grep", "question",
+	"read", "shell", "skill", "subagent", "webfetch", "websearch",
+	"write", "execute",
 }
 
 var (

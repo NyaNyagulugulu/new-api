@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -20,40 +21,49 @@ import (
 // together for every request.
 
 const (
-	// clientVersion is the OpenCode CLI release the wire imitates. The project
-	// has never published a 2.x line; 1.19.5 is the release this shape was
-	// captured from.
-	clientVersion = "1.19.5"
-	// clientUserAgent must be sent alone and unmodified: the gate matches the
-	// whole string, and any prefix or suffix stops reading as the official
-	// client. The runtime suffix is part of what the CLI actually sends.
-	clientUserAgent = "opencode/" + clientVersion + " ai-sdk/provider-utils/4.0.23 runtime/bun/1.4.4"
+	// The Zen free tier checks the current OpenCode application identity. Keep
+	// this in the same format as the v2 client rather than the retired v1
+	// provider-utils/runtime user agent.
+	clientChannel   = "latest"
+	clientVersion   = "2.3.2"
+	clientName      = "cli"
+	clientUserAgent = "opencode/" + clientChannel + "/" + clientVersion + "/" + clientName
 	// anonymousCredential is the pooled keyless credential the free tier uses.
 	anonymousCredential = "public"
 	// completionLimit is the ceiling a 2.x chat body always carries.
 	completionLimit = 32000
-	// sessionWindow is how far before today a minted session may be dated.
-	sessionWindow = 30 * 24 * time.Hour
 	// promptMarker identifies a body that already carries the official prompt.
-	promptMarker = "You are opencode, an interactive CLI tool"
+	promptMarker = "You are an AI agent running in OpenCode, a coding agent harness."
 	// modelsPath lists the ids this gateway serves.
 	modelsPath = "/inference/v1/models"
 )
 
-var base62Alphabet = []byte("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+var (
+	sessionIDsMu sync.Mutex
+	sessionIDs   = make(map[string]string)
+)
 
-// sessionID returns the canonical session id for one conversation seed. The
-// upstream decodes the 12 leading hex characters as a descending timestamp and
-// refuses ids whose date is implausible, so the id is dated today's UTC
-// midnight minus a digest-derived offset of at most sessionWindow. The digest
-// only picks the offset; it never supplies the date.
+// sessionID follows the current OpenCode v2 ID generator. Its first 12 hex
+// characters are the bitwise inverse of the current millisecond timestamp
+// shifted by 12 bits, followed by a stable per-seed random-looking suffix.
 func sessionID(seed string) string {
+	sessionIDsMu.Lock()
+	defer sessionIDsMu.Unlock()
+	if id, ok := sessionIDs[seed]; ok {
+		return id
+	}
+
 	sum := sha256.Sum256([]byte("ses\x00" + seed))
-	offset := int64(uint32(sum[0])<<24|uint32(sum[1])<<16|uint32(sum[2])<<8|uint32(sum[3])) % int64(sessionWindow/time.Millisecond)
-	midnight := time.Now().UTC().Truncate(24 * time.Hour).UnixMilli()
-	stamp := (midnight - offset) << 12
+	stamp := (time.Now().UnixMilli() << 12) | 1
 	inverted := ^stamp & 0xffffffffffff
-	return fmt.Sprintf("ses_%012x%s", inverted, base62(sum[6:16], 14))
+	const alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	suffix := make([]byte, 14)
+	for i := range suffix {
+		suffix[i] = alphabet[int(sum[i%len(sum)])%len(alphabet)]
+	}
+	id := fmt.Sprintf("ses_%012x%s", inverted, suffix)
+	sessionIDs[seed] = id
+	return id
 }
 
 // projectID renders a project signal into the 40-hex shape the gate expects.
@@ -76,35 +86,6 @@ func isHex40(value string) bool {
 		}
 	}
 	return true
-}
-
-// base62 renders bytes big-endian as exactly width base62 characters.
-func base62(data []byte, width int) string {
-	out := make([]byte, width)
-	// Long division over the byte slice, least significant digit first.
-	digits := make([]byte, 0, width+8)
-	work := append([]byte(nil), data...)
-	for len(work) > 0 {
-		remainder := 0
-		next := work[:0]
-		for _, byteValue := range work {
-			current := remainder*256 + int(byteValue)
-			quotient := current / 62
-			remainder = current % 62
-			if len(next) > 0 || quotient != 0 {
-				next = append(next, byte(quotient))
-			}
-		}
-		digits = append(digits, base62Alphabet[remainder])
-		work = next
-	}
-	for i := range out {
-		out[i] = base62Alphabet[0]
-	}
-	for i := 0; i < len(digits) && i < width; i++ {
-		out[width-1-i] = digits[i]
-	}
-	return string(out)
 }
 
 // traceHeaders renders one W3C Trace Context pair. The official client carries
@@ -215,10 +196,10 @@ func DiscoveryHeaders(apiKey string) http.Header {
 	if apiKey != "" && !strings.EqualFold(apiKey, "EMPTY") {
 		headers.Set("Authorization", "Bearer "+apiKey)
 		headers.Set("User-Agent", clientUserAgent)
-		headers.Set("x-opencode-client", "cli")
+		headers.Set("x-opencode-client", clientName)
 		return headers
 	}
-	for name, value := range sessionHeaders("catalog:opencode") {
+	for name, value := range sessionHeaders("catalog:opencode", "catalog:opencode") {
 		headers.Set(name, value)
 	}
 	return headers

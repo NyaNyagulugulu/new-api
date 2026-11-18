@@ -36,6 +36,10 @@ type Adaptor struct {
 	claudeAdaptor claude.Adaptor
 	// keyless reports whether this channel carries a real console API key.
 	keyless bool
+	// freeTierStream records that the upstream request was forced into the
+	// official streaming shape. Non-streaming callers are buffered back into
+	// a normal OpenAI response in DoResponse.
+	freeTierStream bool
 	// reverse maps the opaque wire name of a shaped tool back to the caller's.
 	reverse map[string]string
 }
@@ -43,6 +47,7 @@ type Adaptor struct {
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 	a.openaiAdaptor.Init(info)
 	a.claudeAdaptor.Init(info)
+	a.freeTierStream = false
 	if info == nil || info.ChannelMeta == nil {
 		a.keyless = true
 		return
@@ -91,7 +96,7 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 		// from the same place so a caller's headers cannot half-replace it.
 		req.Del("Authorization")
 		req.Del("x-api-key")
-		for name, value := range sessionHeaders(sessionSeed(info)) {
+		for name, value := range sessionHeaders(sessionSeed(info), projectSeed(info)) {
 			req.Set(name, value)
 		}
 		return nil
@@ -118,6 +123,13 @@ func sessionSeed(info *relaycommon.RelayInfo) string {
 	return fmt.Sprintf("%d:%d:%d", info.ChannelId, info.TokenId, info.UserId)
 }
 
+func projectSeed(info *relaycommon.RelayInfo) string {
+	if info == nil {
+		return "global"
+	}
+	return fmt.Sprintf("channel:%d", info.ChannelId)
+}
+
 func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error) {
 	if request == nil {
 		return nil, errors.New("request is nil")
@@ -129,6 +141,8 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if err != nil {
 		return nil, fmt.Errorf("encode request for the free tier: %w", err)
 	}
+	a.freeTierStream = true
+	body["stream"] = true
 	a.reverse = shapeRequest(body, "chat", upstreamModel(info, request.Model))
 	ensureCompletionLimit(body, "chat")
 	return body, nil
@@ -189,6 +203,13 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+	if a.keyless && a.freeTierStream && info != nil && !info.IsStream {
+		var bufferErr error
+		resp, bufferErr = bufferChatStream(resp)
+		if bufferErr != nil {
+			return nil, types.NewOpenAIError(bufferErr, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+		}
+	}
 	if a.keyless && len(a.reverse) > 0 {
 		resp = a.restoreResponse(c, resp, info)
 	}

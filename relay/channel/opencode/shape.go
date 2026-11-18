@@ -368,18 +368,14 @@ func dropNoneToolChoice(body map[string]any, shape string) {
 	}
 }
 
-// ensureCompletionLimit gives a chat body the ceiling the 2.x client always
-// sends when the caller named none.
+// ensureCompletionLimit applies the completion ceiling used by the official
+// free-tier chat shape. The gateway rejects legacy max_tokens and smaller
+// caller-provided limits with the same 429 used for exhausted free usage.
 func ensureCompletionLimit(body map[string]any, shape string) {
 	if shape != "chat" {
 		return
 	}
-	if _, present := body["max_completion_tokens"]; present {
-		return
-	}
-	if _, present := body["max_tokens"]; present {
-		return
-	}
+	delete(body, "max_tokens")
 	body["max_completion_tokens"] = completionLimit
 }
 
@@ -468,19 +464,22 @@ func restoreStreamToolNames(frame string, reverse map[string]string) string {
 }
 
 // sessionHeaders returns the client-identity headers one request carries. The
-// official 1.19.5 client sends the canonical id on both session headers and a
-// project id alongside them; the project id derives from the session so one
-// conversation's retries share one upstream quota bucket.
-func sessionHeaders(seed string) map[string]string {
+// v2 client separates the request session id from the session-affinity id and
+// sends both legacy aliases used by the gateway.
+func sessionHeaders(seed string, projectSignal string) map[string]string {
 	session := sessionID(seed)
+	affinity := session
 	headers := map[string]string{
 		"content-type":          "application/json",
 		"authorization":         "Bearer " + anonymousCredential,
 		"user-agent":            clientUserAgent,
-		"x-opencode-client":     "cli",
-		"x-opencode-session":    session,
+		"x-opencode-client":     clientName,
 		"x-opencode-session-id": session,
-		"x-opencode-project":    projectID(session),
+		"x-opencode-session":    affinity,
+		"x-session-affinity":    affinity,
+		"X-Session-Id":          affinity,
+		"x-session-id":          affinity,
+		"x-opencode-project":    projectID(projectSignal),
 		"accept":                "*/*",
 	}
 	for name, value := range traceHeaders() {

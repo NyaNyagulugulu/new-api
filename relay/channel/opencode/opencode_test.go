@@ -1,11 +1,17 @@
 package opencode
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSessionIDCarriesPlausibleTimestamp(t *testing.T) {
@@ -194,13 +200,21 @@ func TestEnsureCompletionLimit(t *testing.T) {
 	}
 	explicit := map[string]any{"max_completion_tokens": 128}
 	ensureCompletionLimit(explicit, "chat")
-	if explicit["max_completion_tokens"] != 128 {
-		t.Fatal("an explicit ceiling must be preserved")
+	if explicit["max_completion_tokens"] != completionLimit {
+		t.Fatalf("the free tier requires its official completion ceiling, got %v", explicit["max_completion_tokens"])
+	}
+	legacy := map[string]any{"max_tokens": 128}
+	ensureCompletionLimit(legacy, "chat")
+	if _, present := legacy["max_tokens"]; present {
+		t.Fatal("the legacy token limit must be removed from the official request shape")
+	}
+	if legacy["max_completion_tokens"] != completionLimit {
+		t.Fatalf("the free tier requires its official completion ceiling, got %v", legacy["max_completion_tokens"])
 	}
 }
 
 func TestSessionHeaders(t *testing.T) {
-	headers := sessionHeaders("conversation")
+	headers := sessionHeaders("conversation", "channel:1")
 	session := headers["x-opencode-session"]
 	if headers["x-opencode-session-id"] != session {
 		t.Fatalf("x-opencode-session-id must carry the same canonical session, got %q", headers["x-opencode-session-id"])
@@ -210,6 +224,15 @@ func TestSessionHeaders(t *testing.T) {
 	}
 	if headers["user-agent"] != clientUserAgent {
 		t.Fatalf("user agent must be the exact client string, got %q", headers["user-agent"])
+	}
+	if headers["x-opencode-client"] != clientName {
+		t.Fatalf("client header must use the official application name, got %q", headers["x-opencode-client"])
+	}
+	if headers["x-session-affinity"] != session || headers["X-Session-Id"] != session {
+		t.Fatal("session affinity aliases must carry the canonical session")
+	}
+	if headers["x-opencode-project"] == projectID("conversation") {
+		t.Fatal("project id must not be derived from the request session")
 	}
 	if !isHex40(headers["x-opencode-project"]) {
 		t.Fatalf("project header %q is not 40-hex", headers["x-opencode-project"])
@@ -225,10 +248,25 @@ func TestAdaptorUsesKeylessLaneForEmptyKey(t *testing.T) {
 	if !adaptor.keyless {
 		t.Fatal("an EMPTY key must select the keyless free lane")
 	}
+	request := &dto.GeneralOpenAIRequest{Model: "deepseek-v4.1-flash-free"}
+	stream := false
+	request.Stream = &stream
+	limit := uint(8)
+	request.MaxTokens = &limit
+	converted, err := adaptor.ConvertOpenAIRequest(nil, nil, request)
+	require.NoError(t, err)
+	body, ok := converted.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, true, body["stream"])
+	assert.Equal(t, completionLimit, body["max_completion_tokens"])
+	assert.NotContains(t, body, "max_tokens")
+	assert.Equal(t, true, body["stream_options"].(map[string]any)["include_usage"])
+
 	adaptor.Init(&relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ApiKey: "sk-real"}})
 	if adaptor.keyless {
 		t.Fatal("a real key must use the console credential path")
 	}
+	assert.False(t, adaptor.freeTierStream)
 }
 
 func TestSetupRequestHeaderReplacesCallerAuth(t *testing.T) {
@@ -259,5 +297,39 @@ func TestRestoreStreamToolNames(t *testing.T) {
 	plain := `{"choices":[{"delta":{"content":"hello"}}]}`
 	if restoreStreamToolNames(plain, reverse) != plain {
 		t.Fatal("a frame without a tool name must pass through unchanged")
+	}
+}
+
+func TestBufferChatStream(t *testing.T) {
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     make(http.Header),
+		Body: io.NopCloser(bytes.NewBufferString(
+			"data: {\"id\":\"cmpl_1\",\"model\":\"deepseek-v4.1-flash-free\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"hel\"},\"finish_reason\":null}]}\n\n" +
+				"data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"lo\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":2,\"total_tokens\":4}}\n\n" +
+				"data: [DONE]\n\n",
+		)),
+	}
+
+	buffered, err := bufferChatStream(resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := io.ReadAll(buffered.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err := common.Unmarshal(payload, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	choices, _ := decoded["choices"].([]any)
+	choice, _ := choices[0].(map[string]any)
+	message, _ := choice["message"].(map[string]any)
+	if message["content"] != "hello" {
+		t.Fatalf("buffered content = %v, want hello", message["content"])
+	}
+	if choice["finish_reason"] != "stop" {
+		t.Fatalf("buffered finish reason = %v, want stop", choice["finish_reason"])
 	}
 }
