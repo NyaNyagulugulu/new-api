@@ -33,6 +33,25 @@ func TestSessionIDCarriesPlausibleTimestamp(t *testing.T) {
 	}
 }
 
+func TestOfficialSystemPromptHidesProviderIdentity(t *testing.T) {
+	prompt := officialSystemPrompt("deepseek-v4.1-flash-free")
+	if !strings.Contains(prompt, "Safe human-readable model name: DeepSeek V4.1 Flash") {
+		t.Fatal("identity policy must provide a safe model name")
+	}
+	if !strings.Contains(prompt, "Never disclose, repeat, or infer the exact model ID") {
+		t.Fatal("identity policy must forbid internal model disclosure")
+	}
+}
+
+func TestHumanModelNameRemovesProviderAndTier(t *testing.T) {
+	if got := humanModelName("deepseek/deepseek-v4.1-flash-free"); got != "DeepSeek V4.1 Flash" {
+		t.Fatalf("human model name = %q", got)
+	}
+	if got := humanModelName("anthropic/claude-fable-5-paid"); got != "Claude Fable 5" {
+		t.Fatalf("human model name = %q", got)
+	}
+}
+
 func TestSessionIDIsStableForOneSeed(t *testing.T) {
 	if sessionID("same") != sessionID("same") {
 		t.Fatal("one conversation must keep one upstream session")
@@ -254,6 +273,7 @@ func TestAdaptorUsesKeylessLaneForEmptyKey(t *testing.T) {
 	assert.Equal(t, completionLimit, body["max_completion_tokens"])
 	assert.NotContains(t, body, "max_tokens")
 	assert.Equal(t, true, body["stream_options"].(map[string]any)["include_usage"])
+	assert.False(t, adaptor.clientStream)
 
 	adaptor.Init(&relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ApiKey: "sk-real"}})
 	if adaptor.keyless {
@@ -290,6 +310,22 @@ func TestResponsesRequestUsesChatWireForKeylessFreeTier(t *testing.T) {
 	assert.NotContains(t, body, "input")
 }
 
+func TestConversationSessionSeedSeparatesConversations(t *testing.T) {
+	info := &relaycommon.RelayInfo{
+		UserId:      1,
+		ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 24},
+	}
+	first := conversationSessionSeed(info, map[string]any{
+		"messages": []any{map[string]any{"role": "user", "content": "first"}},
+	})
+	second := conversationSessionSeed(info, map[string]any{
+		"messages": []any{map[string]any{"role": "user", "content": "second"}},
+	})
+	if first == second {
+		t.Fatal("different conversations must not share a free-tier session")
+	}
+}
+
 func TestSetupRequestHeaderReplacesCallerAuth(t *testing.T) {
 	adaptor := &Adaptor{}
 	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ApiKey: ""}}
@@ -306,6 +342,40 @@ func TestSetupRequestHeaderReplacesCallerAuth(t *testing.T) {
 	if headers.Get("x-api-key") != "" {
 		t.Fatal("the Anthropic credential header must be cleared on the keyless lane")
 	}
+}
+
+func TestSetupRequestHeaderAddsOpenCodeOrganization(t *testing.T) {
+	adaptor := &Adaptor{}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ApiKey:       "st_test",
+			Organization: "wrk_test",
+		},
+	}
+	adaptor.Init(info)
+	headers := http.Header{}
+	require.NoError(t, adaptor.SetupRequestHeader(nil, &headers, info))
+	assert.Equal(t, "Bearer st_test", headers.Get("Authorization"))
+	assert.Equal(t, "wrk_test", headers.Get("x-opencode-org-id"))
+	assert.Equal(t, clientUserAgent, headers.Get("User-Agent"))
+	assert.Equal(t, clientName, headers.Get("x-opencode-client"))
+	assert.NotEmpty(t, headers.Get("x-opencode-session-id"))
+	assert.True(t, adaptor.ResponsesViaChat())
+
+	converted, err := adaptor.ConvertOpenAIResponsesRequest(nil, info, dto.OpenAIResponsesRequest{
+		Model: "mimo-v2.6-flash-free",
+		Input: []byte(`[{"role":"user","content":"hi"}]`),
+	})
+	require.NoError(t, err)
+	body, ok := converted.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, true, body["stream"])
+	assert.Contains(t, body, "messages")
+	assert.NotContains(t, body, "input")
+
+	adaptor.Init(&relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ApiKey: "sk-console-key"}})
+	assert.False(t, adaptor.cliMode)
+	assert.False(t, adaptor.ResponsesViaChat())
 }
 
 func TestRestoreStreamToolNames(t *testing.T) {
@@ -326,7 +396,7 @@ func TestBufferChatStream(t *testing.T) {
 		StatusCode: http.StatusOK,
 		Header:     make(http.Header),
 		Body: io.NopCloser(bytes.NewBufferString(
-			"data: {\"id\":\"cmpl_1\",\"model\":\"deepseek-v4.1-flash-free\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"hel\"},\"finish_reason\":null}]}\n\n" +
+			"data: {\"id\":\"cmpl_1\",\"model\":\"deepseek-v4.1-flash-free\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"reasoning_content\":\"reason\",\"content\":\"hel\"},\"finish_reason\":null}]}\n\n" +
 				"data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"lo\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":2,\"total_tokens\":4}}\n\n" +
 				"data: [DONE]\n\n",
 		)),
@@ -353,4 +423,10 @@ func TestBufferChatStream(t *testing.T) {
 	if choice["finish_reason"] != "stop" {
 		t.Fatalf("buffered finish reason = %v, want stop", choice["finish_reason"])
 	}
+	assert.Equal(t, "reason", message["reasoning_content"])
+	usage, ok := decoded["usage"].(map[string]any)
+	require.True(t, ok)
+	assert.EqualValues(t, 2, usage["prompt_tokens"])
+	assert.EqualValues(t, 2, usage["completion_tokens"])
+	assert.EqualValues(t, 4, usage["total_tokens"])
 }

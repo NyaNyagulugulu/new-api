@@ -2,6 +2,8 @@ package opencode
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -37,11 +39,15 @@ type Adaptor struct {
 	claudeAdaptor claude.Adaptor
 	// keyless reports whether this channel carries a real console API key.
 	keyless bool
+	// OAuth session tokens use the CLI wire just like anonymous requests.
+	cliMode bool
 	// freeTierStream records that the upstream request was forced into the
 	// official streaming shape. Non-streaming callers are buffered back into
 	// a normal OpenAI response in DoResponse.
 	freeTierStream   bool
+	clientStream     bool
 	responsesViaChat bool
+	sessionSeed      string
 	// reverse maps the opaque wire name of a shaped tool back to the caller's.
 	reverse map[string]string
 }
@@ -50,13 +56,17 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 	a.openaiAdaptor.Init(info)
 	a.claudeAdaptor.Init(info)
 	a.freeTierStream = false
+	a.clientStream = info != nil && info.IsStream
 	a.responsesViaChat = false
+	a.sessionSeed = ""
 	if info == nil || info.ChannelMeta == nil {
 		a.keyless = true
+		a.cliMode = true
 		return
 	}
 	key := strings.TrimSpace(info.ApiKey)
 	a.keyless = key == "" || strings.EqualFold(key, "EMPTY")
+	a.cliMode = a.keyless || strings.HasPrefix(key, "st_")
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
@@ -67,7 +77,7 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	// The free tier only answers the official CLI's client fingerprint, which
 	// Go cannot present; the sidecar carries it. A channel with a real key
 	// talks to the upstream directly, so paid traffic never pays for the hop.
-	if a.keyless {
+	if a.cliMode {
 		sidecarBase, err := freeTierBaseURL()
 		if err != nil {
 			return "", err
@@ -76,7 +86,7 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	}
 	switch info.RelayMode {
 	case relayconstant.RelayModeResponses:
-		if a.keyless {
+		if a.cliMode {
 			return base + ChatPath, nil
 		}
 		return base + ResponsesPath, nil
@@ -87,6 +97,9 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	case types.RelayFormatClaude:
 		return base + MessagesPath, nil
 	case types.RelayFormatOpenAIResponses:
+		if a.cliMode {
+			return base + ChatPath, nil
+		}
 		return base + ResponsesPath, nil
 	}
 	return base + ChatPath, nil
@@ -96,18 +109,31 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 	if c != nil && c.Request != nil {
 		channel.SetupApiRequestHeader(info, c, req)
 	}
-	if a.keyless {
+	if a.cliMode {
 		// The keyless lane authenticates with the pooled credential and is
 		// fingerprinted on the client identity; every header it needs comes
 		// from the same place so a caller's headers cannot half-replace it.
 		req.Del("Authorization")
 		req.Del("x-api-key")
-		for name, value := range sessionHeaders(sessionSeed(info), projectSeed(info)) {
+		seed := a.sessionSeed
+		if seed == "" {
+			seed = sessionSeed(info)
+		}
+		for name, value := range sessionHeaders(seed, projectSeed(info)) {
 			req.Set(name, value)
+		}
+		if !a.keyless {
+			req.Set("Authorization", "Bearer "+strings.TrimSpace(info.ApiKey))
+			if organization := strings.TrimSpace(info.Organization); organization != "" {
+				req.Set("x-opencode-org-id", organization)
+			}
 		}
 		return nil
 	}
 	req.Set("Authorization", "Bearer "+strings.TrimSpace(info.ApiKey))
+	if organization := strings.TrimSpace(info.Organization); organization != "" {
+		req.Set("x-opencode-org-id", organization)
+	}
 	if info.RelayFormat == types.RelayFormatClaude {
 		if req.Get("anthropic-version") == "" {
 			req.Set("anthropic-version", "2023-06-01")
@@ -129,18 +155,39 @@ func sessionSeed(info *relaycommon.RelayInfo) string {
 	return fmt.Sprintf("%d:%d:%d", info.ChannelId, info.TokenId, info.UserId)
 }
 
+func conversationSessionSeed(info *relaycommon.RelayInfo, body map[string]any) string {
+	base := sessionSeed(info)
+	messages, _ := body["messages"].([]any)
+	for _, raw := range messages {
+		message, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if role, _ := message["role"].(string); role != "user" {
+			continue
+		}
+		content, err := common.Marshal(message["content"])
+		if err != nil {
+			return base
+		}
+		sum := sha256.Sum256(append([]byte("opencode-conversation\x00"), content...))
+		return base + ":" + hex.EncodeToString(sum[:8])
+	}
+	return base
+}
+
 func projectSeed(info *relaycommon.RelayInfo) string {
 	if info == nil {
 		return "global"
 	}
-	return fmt.Sprintf("channel:%d", info.ChannelId)
+	return fmt.Sprintf("channel:%d:user:%d:token:%d", info.ChannelId, info.UserId, info.TokenId)
 }
 
 func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error) {
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
-	if !a.keyless {
+	if !a.cliMode {
 		return request, nil
 	}
 	body, err := marshalMap(request)
@@ -148,6 +195,8 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		return nil, fmt.Errorf("encode request for the free tier: %w", err)
 	}
 	a.freeTierStream = true
+	a.clientStream = request.Stream != nil && *request.Stream
+	a.sessionSeed = conversationSessionSeed(info, body)
 	body["stream"] = true
 	a.reverse = shapeRequest(body, "chat", upstreamModel(info, request.Model))
 	ensureCompletionLimit(body, "chat")
@@ -158,7 +207,7 @@ func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayIn
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
-	if !a.keyless {
+	if !a.cliMode {
 		return a.claudeAdaptor.ConvertClaudeRequest(c, info, request)
 	}
 	body, err := marshalMap(request)
@@ -170,7 +219,7 @@ func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayIn
 }
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
-	if !a.keyless {
+	if !a.cliMode {
 		return request, nil
 	}
 	chatRequest, err := service.ResponsesRequestToChatCompletionsRequest(&request)
@@ -183,6 +232,8 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	}
 	a.freeTierStream = true
 	a.responsesViaChat = true
+	a.clientStream = request.Stream != nil && *request.Stream
+	a.sessionSeed = conversationSessionSeed(info, body)
 	body["stream"] = true
 	a.reverse = shapeRequest(body, "chat", upstreamModel(info, request.Model))
 	ensureCompletionLimit(body, "chat")
@@ -190,11 +241,11 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 }
 
 func (a *Adaptor) ResponsesViaChat() bool {
-	return a.keyless
+	return a.cliMode
 }
 
 func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeminiChatRequest) (any, error) {
-	if a.keyless {
+	if a.cliMode {
 		return nil, errors.New("the OpenCode free tier does not speak the Gemini wire; use the OpenAI or Claude endpoint")
 	}
 	return nil, errors.New("not implemented")
@@ -221,7 +272,10 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
-	if a.keyless && a.responsesViaChat {
+	if a.cliMode && a.freeTierStream && info != nil {
+		info.IsStream = a.clientStream
+	}
+	if a.cliMode && a.responsesViaChat {
 		if info.IsStream {
 			return openai.OaiChatToResponsesStreamHandler(c, info, resp)
 		}
@@ -230,14 +284,14 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 		}
 		return openai.OaiChatToResponsesHandler(c, info, resp)
 	}
-	if a.keyless && a.freeTierStream && info != nil && !info.IsStream {
+	if a.cliMode && a.freeTierStream && info != nil && !info.IsStream {
 		var bufferErr error
 		resp, bufferErr = bufferChatStream(resp)
 		if bufferErr != nil {
 			return nil, types.NewOpenAIError(bufferErr, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
 		}
 	}
-	if a.keyless && len(a.reverse) > 0 {
+	if a.cliMode && len(a.reverse) > 0 {
 		resp = a.restoreResponse(c, resp, info)
 	}
 	switch info.RelayFormat {

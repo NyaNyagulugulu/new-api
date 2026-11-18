@@ -132,7 +132,8 @@ func bufferChatStream(resp *http.Response) (*http.Response, error) {
 				message["content"] = message["content"].(string) + content
 			}
 			if reasoning, ok := delta["reasoning_content"].(string); ok {
-				message["reasoning_content"] = message["reasoning_content"].(string) + reasoning
+				existing, _ := message["reasoning_content"].(string)
+				message["reasoning_content"] = existing + reasoning
 			}
 			rawToolCalls, _ := delta["tool_calls"].([]any)
 			for _, rawToolCall := range rawToolCalls {
