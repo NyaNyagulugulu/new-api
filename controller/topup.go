@@ -173,7 +173,11 @@ func getPayMoney(amount int64, group string) float64 {
 	}
 	dDiscount := decimal.NewFromFloat(discount)
 
-	payMoney := dAmount.Mul(dPrice).Mul(dTopupGroupRatio).Mul(dDiscount)
+	payMoney := dAmount.
+		Mul(dPrice).
+		Mul(dTopupGroupRatio).
+		Mul(dDiscount).
+		Mul(decimal.NewFromFloat(operation_setting.PaymentFeeMultiplier()))
 
 	return payMoney.InexactFloat64()
 }

@@ -271,6 +271,9 @@ func validateOptionValue(key string, value string) error {
 	if key == operation_setting.LogMaxRangeDaysOptionKey {
 		return operation_setting.ValidateLogMaxRangeDays(value)
 	}
+	if key == "payment_setting.fee_percent" {
+		return operation_setting.ValidatePaymentFeePercent(value)
+	}
 	if key == "MaxTokenAutoGroups" {
 		return setting.ValidateMaxTokenAutoGroups(value)
 	}

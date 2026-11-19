@@ -130,6 +130,7 @@ const paymentSchema = z.object({
       })
     }
   }),
+  FeePercent: z.coerce.number().min(0).max(100),
   AmountDiscount: z.string().superRefine((value, ctx) => {
     const error = getJsonError(
       value,
@@ -356,6 +357,7 @@ export function PaymentSettingsSection({
       ...initialFormValues,
       PayMethods: formatJsonForEditor(initialFormValues.PayMethods),
       AmountOptions: formatJsonForEditor(initialFormValues.AmountOptions),
+      FeePercent: initialFormValues.FeePercent,
       AmountDiscount: formatJsonForEditor(initialFormValues.AmountDiscount),
       CreemProducts: formatJsonForEditor(initialFormValues.CreemProducts),
     },
@@ -413,6 +415,7 @@ export function PaymentSettingsSection({
       ...parsedDefaults,
       PayMethods: formatJsonForEditor(parsedDefaults.PayMethods),
       AmountOptions: formatJsonForEditor(parsedDefaults.AmountOptions),
+      FeePercent: parsedDefaults.FeePercent,
       AmountDiscount: formatJsonForEditor(parsedDefaults.AmountDiscount),
       CreemProducts: formatJsonForEditor(parsedDefaults.CreemProducts),
     })
@@ -428,6 +431,7 @@ export function PaymentSettingsSection({
       CustomCallbackAddress: removeTrailingSlash(values.CustomCallbackAddress),
       PayMethods: values.PayMethods.trim(),
       AmountOptions: values.AmountOptions.trim(),
+      FeePercent: values.FeePercent,
       AmountDiscount: values.AmountDiscount.trim(),
       StripeApiSecret: values.StripeApiSecret.trim(),
       StripeWebhookSecret: values.StripeWebhookSecret.trim(),
@@ -472,6 +476,7 @@ export function PaymentSettingsSection({
       ),
       PayMethods: initialRef.current.PayMethods.trim(),
       AmountOptions: initialRef.current.AmountOptions.trim(),
+      FeePercent: initialRef.current.FeePercent,
       AmountDiscount: initialRef.current.AmountDiscount.trim(),
       StripeApiSecret: initialRef.current.StripeApiSecret.trim(),
       StripeWebhookSecret: initialRef.current.StripeWebhookSecret.trim(),
@@ -528,6 +533,13 @@ export function PaymentSettingsSection({
 
     if (sanitized.MinTopUp !== initial.MinTopUp) {
       updates.push({ key: 'MinTopUp', value: sanitized.MinTopUp })
+    }
+
+    if (sanitized.FeePercent !== initial.FeePercent) {
+      updates.push({
+        key: 'payment_setting.fee_percent',
+        value: sanitized.FeePercent,
+      })
     }
 
     if (sanitized.CustomCallbackAddress !== initial.CustomCallbackAddress) {
@@ -946,6 +958,31 @@ export function PaymentSettingsSection({
                         </FormControl>
                         <FormDescription>
                           {t('Smallest USD amount users can recharge (Epay)')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='FeePercent'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Top-up fee / tax (%)')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            min={0}
+                            max={100}
+                            {...safeNumberFieldProps(field)}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            '0 means no fee; at 1%, a 1.00 top-up costs 1.01. Applies to Epay, Waffo, and Waffo Pancake; fixed-price Stripe and Creem products are unchanged.'
+                          )}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>

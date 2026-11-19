@@ -101,7 +101,7 @@ func getWaffoPayMoney(amount float64, group string) float64 {
 			discount = ds
 		}
 	}
-	return amount * setting.WaffoUnitPrice * topupGroupRatio * discount
+	return amount * setting.WaffoUnitPrice * topupGroupRatio * discount * operation_setting.PaymentFeeMultiplier()
 }
 
 type WaffoPayRequest struct {

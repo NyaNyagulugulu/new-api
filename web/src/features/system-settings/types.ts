@@ -316,6 +316,7 @@ export type BillingSettings = {
   PayMethods: string
   'payment_setting.amount_options': string
   'payment_setting.amount_discount': string
+  'payment_setting.fee_percent': number
   'payment_setting.compliance_confirmed': boolean
   'payment_setting.compliance_terms_version': string
   'payment_setting.compliance_confirmed_at': number
