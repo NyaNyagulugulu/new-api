@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	opencodechannel "github.com/QuantumNous/new-api/relay/channel/opencode"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/model_setting"
@@ -17,6 +18,34 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func TestOpenCodeCLIRequestConversionOverridesPassthrough(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		apiKey          string
+		channelPass     bool
+		globalPass      bool
+		wantPassThrough bool
+	}{
+		{name: "keyless channel passthrough", apiKey: "EMPTY", channelPass: true},
+		{name: "keyless global passthrough", apiKey: "", globalPass: true},
+		{name: "OAuth channel and global passthrough", apiKey: "st_session", channelPass: true, globalPass: true},
+		{name: "console key keeps passthrough", apiKey: "sk-console", channelPass: true, globalPass: true, wantPassThrough: true},
+		{name: "console key without passthrough", apiKey: "sk-console"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			info := &relaycommon.RelayInfo{
+				ChannelMeta: &relaycommon.ChannelMeta{
+					ApiKey:         tc.apiKey,
+					ChannelSetting: dto.ChannelSettings{PassThroughBodyEnabled: tc.channelPass},
+				},
+			}
+			adaptor := &opencodechannel.Adaptor{}
+			adaptor.Init(info)
+			assert.Equal(t, tc.wantPassThrough, requestBodyPassThroughEnabled(info, adaptor, tc.globalPass))
+		})
+	}
+}
 
 func TestPrepareResponsesRequestDeepSeekEffectiveReasoning(t *testing.T) {
 	settings := model_setting.GetGlobalSettings()

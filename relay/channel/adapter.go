@@ -48,6 +48,12 @@ type ResponsesViaChatAdaptor interface {
 	ResponsesViaChat() bool
 }
 
+// RequestConversionRequired marks adaptors whose upstream compatibility
+// envelope must be applied even when request-body passthrough is enabled.
+type RequestConversionRequired interface {
+	RequestConversionRequired() bool
+}
+
 // ResponsesRequestFinalizer applies provider-specific rules to the effective
 // JSON request after channel parameter overrides. Passthrough bypasses this hook.
 type ResponsesRequestFinalizer interface {

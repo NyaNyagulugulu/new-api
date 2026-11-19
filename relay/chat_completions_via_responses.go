@@ -72,6 +72,16 @@ func applySystemPromptIfNeeded(c *gin.Context, info *relaycommon.RelayInfo, requ
 	}
 }
 
+func requestBodyPassThroughEnabled(info *relaycommon.RelayInfo, adaptor channel.Adaptor, global bool) bool {
+	if !global && (info == nil || !info.ChannelSetting.PassThroughBodyEnabled) {
+		return false
+	}
+	if required, ok := adaptor.(channel.RequestConversionRequired); ok {
+		return !required.RequestConversionRequired()
+	}
+	return true
+}
+
 func shouldTextRequestViaResponses(info *relaycommon.RelayInfo, adaptor channel.Adaptor, passThroughGlobal bool) bool {
 	if responsesOnly, ok := adaptor.(channel.ResponsesOnlyAdaptor); ok && responsesOnly.ResponsesOnly() {
 		return true

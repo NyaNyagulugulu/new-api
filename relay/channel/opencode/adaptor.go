@@ -249,6 +249,10 @@ func (a *Adaptor) ResponsesViaChat() bool {
 	return a.cliMode
 }
 
+func (a *Adaptor) RequestConversionRequired() bool {
+	return a.cliMode
+}
+
 func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeminiChatRequest) (any, error) {
 	if a.cliMode {
 		return nil, errors.New("the OpenCode free tier does not speak the Gemini wire; use the OpenAI or Claude endpoint")
