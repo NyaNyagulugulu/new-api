@@ -359,8 +359,18 @@ func TestTextToolNativeCallReachesResponsesClient(t *testing.T) {
 	previousTimeout := constant.StreamingTimeout
 	constant.StreamingTimeout = 30
 	t.Cleanup(func() { constant.StreamingTimeout = previousTimeout })
-	for _, stream := range []bool{false, true} {
-		t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
+	for _, tc := range []struct {
+		stream    bool
+		tool      string
+		arguments string
+	}{
+		{tool: "exec_command", arguments: `{"cmd":"pwd"}`},
+		{stream: true, tool: "exec_command", arguments: `{"cmd":"pwd"}`},
+		{tool: "shell", arguments: `{"command":"pwd","workdir":"/tmp"}`},
+		{stream: true, tool: "shell", arguments: `{"command":"pwd","workdir":"/tmp"}`},
+	} {
+		t.Run(fmt.Sprintf("%s/stream=%t", tc.tool, tc.stream), func(t *testing.T) {
+			stream := tc.stream
 			recorder := httptest.NewRecorder()
 			ctx, _ := gin.CreateTestContext(recorder)
 			ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
@@ -374,11 +384,19 @@ func TestTextToolNativeCallReachesResponsesClient(t *testing.T) {
 			adaptor.Init(info)
 			_, err := adaptor.ConvertOpenAIResponsesRequest(ctx, info, dto.OpenAIResponsesRequest{
 				Model: "deepseek-v4.1-flash-free", Input: []byte(`"create a file"`), Stream: &stream,
-				Tools: []byte(`[{"type":"function","name":"exec_command","parameters":{"type":"object","properties":{"cmd":{"type":"string"}},"required":["cmd"]}}]`),
+				Tools: []byte(`[{"type":"function","name":"exec_command","parameters":{"type":"object","properties":{"cmd":{"type":"string"},"workdir":{"type":"string"}},"required":["cmd"]}}]`),
 			})
 			require.NoError(t, err)
 			require.NotNil(t, adaptor.textTools)
-			sse := "data: {\"id\":\"chat_1\",\"model\":\"deepseek-v4.1-flash-free\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"exec_command\",\"arguments\":\"{\\\"cmd\\\":\\\"pwd\\\"}\"}}]}}]}\n\n" +
+			chunk, err := common.Marshal(map[string]any{
+				"id": "chat_1", "model": "deepseek-v4.1-flash-free",
+				"choices": []any{map[string]any{"delta": map[string]any{"tool_calls": []any{map[string]any{
+					"index": 0, "id": "call_1", "type": "function",
+					"function": map[string]any{"name": tc.tool, "arguments": tc.arguments},
+				}}}}},
+			})
+			require.NoError(t, err)
+			sse := "data: " + string(chunk) + "\n\n" +
 				"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n" +
 				"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":4,\"total_tokens\":7}}\n\n" +
 				"data: [DONE]\n\n"
@@ -393,6 +411,80 @@ func TestTextToolNativeCallReachesResponsesClient(t *testing.T) {
 			assert.Contains(t, recorder.Body.String(), `"name":"exec_command"`)
 			assert.Contains(t, recorder.Body.String(), `"call_id":"call_1"`)
 			assert.Contains(t, recorder.Body.String(), `"type":"function_call"`)
+			if tc.tool == "shell" {
+				assert.Contains(t, recorder.Body.String(), `\"workdir\":\"/tmp\"`)
+				assert.NotContains(t, recorder.Body.String(), `"name":"shell"`)
+			}
+
+			history, err := common.Marshal([]any{
+				map[string]any{"role": "user", "content": "create a file"},
+				map[string]any{"type": "function_call", "call_id": "call_1", "name": "exec_command", "arguments": `{"cmd":"pwd"}`},
+				map[string]any{"type": "function_call_output", "call_id": "call_1", "output": "/tmp"},
+			})
+			require.NoError(t, err)
+			next := &Adaptor{}
+			next.Init(info)
+			converted, err := next.ConvertOpenAIResponsesRequest(ctx, info, dto.OpenAIResponsesRequest{
+				Model: "deepseek-v4.1-flash-free", Input: history, Stream: &stream,
+				Tools: []byte(`[{"type":"function","name":"exec_command","parameters":{"type":"object","properties":{"cmd":{"type":"string"}},"required":["cmd"]}}]`),
+			})
+			require.NoError(t, err)
+			messages := converted.(map[string]any)["messages"].([]any)
+			var replayed string
+			for _, raw := range messages {
+				message := raw.(map[string]any)
+				assert.NotContains(t, message, "tool_calls")
+				assert.NotContains(t, message, "tool_call_id")
+				if message["role"] == "assistant" {
+					replayed, _ = message["content"].(string)
+				}
+			}
+			require.Contains(t, replayed, textToolCallPrefix)
+			var call map[string]any
+			require.NoError(t, common.UnmarshalJsonStr(strings.TrimSuffix(strings.TrimPrefix(replayed, textToolCallPrefix), textToolCallSuffix), &call))
+			assert.Equal(t, "call_1", call["id"])
+			assert.Equal(t, "exec_command", call["name"])
+			assert.Equal(t, map[string]any{"cmd": "pwd"}, call["arguments"])
+		})
+	}
+}
+
+func TestTextToolShellMappingRequiresCompatibleClientSchema(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		schema    string
+		arguments string
+		wantError bool
+	}{
+		{name: "command", schema: `{"type":"object","properties":{"cmd":{"type":"string"}},"required":["cmd"]}`, arguments: `{"command":"pwd"}`},
+		{name: "no command tool", schema: `{"type":"object","properties":{}}`, arguments: `{"command":"pwd"}`, wantError: true},
+		{name: "extra required property", schema: `{"type":"object","properties":{"cmd":{"type":"string"}},"required":["cmd","approval"]}`, arguments: `{"command":"pwd"}`, wantError: true},
+		{name: "unsupported workdir", schema: `{"type":"object","properties":{"cmd":{"type":"string"}}}`, arguments: `{"command":"pwd","workdir":"/tmp"}`, wantError: true},
+		{name: "background", schema: `{"type":"object","properties":{"cmd":{"type":"string"}}}`, arguments: `{"command":"pwd","background":true}`, wantError: true},
+		{name: "timeout", schema: `{"type":"object","properties":{"cmd":{"type":"string"}}}`, arguments: `{"command":"pwd","timeout":3000}`, wantError: true},
+		{name: "invalid command", schema: `{"type":"object","properties":{"cmd":{"type":"string"}}}`, arguments: `{"command":123}`, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			protocol, err := prepareTextTools(map[string]any{}, []dto.ToolCallRequest{{
+				Type: "function", Function: dto.FunctionRequest{Name: "exec_command", Parameters: []byte(tc.schema)},
+			}})
+			require.NoError(t, err)
+			response := map[string]any{"choices": []any{map[string]any{
+				"finish_reason": "tool_calls",
+				"message": map[string]any{"tool_calls": []any{map[string]any{
+					"id": "call_1", "type": "function",
+					"function": map[string]any{"name": "shell", "arguments": tc.arguments},
+				}}},
+			}}}
+			result, err := renderTextToolResponse(response, protocol)
+			if tc.wantError {
+				require.Error(t, err)
+				assert.Empty(t, result)
+				return
+			}
+			require.NoError(t, err)
+			assert.Contains(t, string(result), `"name":"exec_command"`)
+			assert.Contains(t, string(result), `\"cmd\":\"pwd\"`)
 		})
 	}
 }

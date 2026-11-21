@@ -24,6 +24,9 @@ File, shell, workspace, code, and external-action requests require a client tool
 
 type textToolProtocol struct {
 	allowed map[string]struct{}
+	// shellTarget is enabled only for a declared, compatible exec_command schema.
+	shellTarget  string
+	shellWorkdir bool
 }
 
 type textToolCall struct {
@@ -53,6 +56,27 @@ func prepareTextTools(body map[string]any, tools []dto.ToolCallRequest) (*textTo
 		var schemaValue any
 		if err := common.Unmarshal([]byte(schema), &schemaValue); err != nil {
 			return nil, fmt.Errorf("invalid schema for tool %q: %w", name, err)
+		}
+		if name == "exec_command" {
+			var target struct {
+				Type       string `json:"type"`
+				Properties map[string]struct {
+					Type string `json:"type"`
+				} `json:"properties"`
+				Required []string `json:"required"`
+			}
+			if err := common.Unmarshal([]byte(schema), &target); err == nil && target.Type == "object" && target.Properties["cmd"].Type == "string" {
+				compatible := true
+				for _, required := range target.Required {
+					if required != "cmd" {
+						compatible = false
+					}
+				}
+				if compatible {
+					protocol.shellTarget = name
+					protocol.shellWorkdir = target.Properties["workdir"].Type == "string"
+				}
+			}
 		}
 		schemaJSON, err := common.Marshal(schemaValue)
 		if err != nil {
@@ -222,10 +246,16 @@ func rewriteTextToolHistory(body map[string]any) {
 				name, _ := function["name"].(string)
 				id, _ := call["id"].(string)
 				args := function["arguments"]
+				if rawArguments, ok := args.(string); ok {
+					var arguments map[string]common.RawMessage
+					if err := common.UnmarshalJsonStr(rawArguments, &arguments); err == nil && arguments != nil {
+						args = common.RawMessage(rawArguments)
+					}
+				}
 				if id != "" {
 					callNames[id] = name
 				}
-				encoded, err := common.Marshal(map[string]any{"name": name, "arguments": args})
+				encoded, err := common.Marshal(map[string]any{"id": id, "name": name, "arguments": args})
 				if err != nil {
 					continue
 				}
@@ -343,10 +373,23 @@ func renderTextToolResponse(response map[string]any, protocol *textToolProtocol)
 		}
 		function, _ := call["function"].(map[string]any)
 		name, _ := function["name"].(string)
+		arguments, ok := function["arguments"].(string)
+		if name == "shell" {
+			if _, declared := protocol.allowed[name]; !declared && protocol.shellTarget != "" {
+				translated, translateErr := protocol.translateShellCall(arguments)
+				if translateErr != nil {
+					return nil, translateErr
+				}
+				name = protocol.shellTarget
+				arguments = translated
+				function["name"] = name
+				function["arguments"] = arguments
+				ok = true
+			}
+		}
 		if _, allowed := protocol.allowed[name]; !allowed {
 			return nil, fmt.Errorf("upstream selected tool %q which the client did not provide; native compatibility tools cannot be executed", name)
 		}
-		arguments, ok := function["arguments"].(string)
 		var object map[string]common.RawMessage
 		if !ok || common.UnmarshalJsonStr(arguments, &object) != nil || object == nil {
 			return nil, fmt.Errorf("upstream returned invalid arguments for tool %q", name)
@@ -415,6 +458,40 @@ func renderTextToolResponse(response map[string]any, protocol *textToolProtocol)
 	}
 	output.WriteString("data: [DONE]\n\n")
 	return output.Bytes(), nil
+}
+
+// translateShellCall preserves the command and working directory while the
+// receiving client retains execution, sandboxing, and permission checks.
+func (p *textToolProtocol) translateShellCall(arguments string) (string, error) {
+	var source map[string]common.RawMessage
+	if err := common.UnmarshalJsonStr(arguments, &source); err != nil || source == nil {
+		return "", errors.New("upstream shell arguments must be a JSON object")
+	}
+	var command string
+	if err := common.Unmarshal(source["command"], &command); err != nil || strings.TrimSpace(command) == "" {
+		return "", errors.New("upstream shell call requires a non-empty command")
+	}
+	target := map[string]common.RawMessage{"cmd": source["command"]}
+	for name, value := range source {
+		switch name {
+		case "command":
+		case "workdir":
+			var workdir string
+			if !p.shellWorkdir || common.Unmarshal(value, &workdir) != nil {
+				return "", errors.New("client exec_command cannot preserve the upstream shell working directory")
+			}
+			target["workdir"] = value
+		case "background":
+			var background bool
+			if common.Unmarshal(value, &background) != nil || background {
+				return "", errors.New("client exec_command cannot preserve upstream shell background execution")
+			}
+		default:
+			return "", fmt.Errorf("client exec_command cannot preserve upstream shell parameter %q", name)
+		}
+	}
+	payload, err := common.Marshal(target)
+	return string(payload), err
 }
 
 func parseTextToolCalls(content string, protocol *textToolProtocol) (string, []any) {
