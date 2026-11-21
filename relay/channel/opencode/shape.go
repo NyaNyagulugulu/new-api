@@ -14,10 +14,14 @@ func shapeRequest(body map[string]any, shape string, model string) map[string]st
 		return nil
 	}
 	reverse := make(map[string]string)
+	textTools, _ := body["__new_api_text_tools"].(bool)
+	delete(body, "__new_api_text_tools")
 	injectSystemPrompt(body, shape, model)
-	appendClientToolPolicy(body, shape)
-	tools, _ := body["tools"].([]any)
-	body["tools"] = append(tools, missingOfficialTools(tools, shape)...)
+	if !textTools {
+		appendClientToolPolicy(body, shape)
+		tools, _ := body["tools"].([]any)
+		body["tools"] = append(tools, missingOfficialTools(tools, shape)...)
+	}
 	rewriteToolReferences(body, shape, reverse)
 	dropNoneToolChoice(body, shape)
 	if shape == "chat" && body["stream"] == true {

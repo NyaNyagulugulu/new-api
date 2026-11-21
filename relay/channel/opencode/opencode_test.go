@@ -226,6 +226,76 @@ func TestEnsureCompletionLimit(t *testing.T) {
 	}
 }
 
+func TestTextToolModeRemovesNativeToolsAndAddsProtocolPrompt(t *testing.T) {
+	textTools := true
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ApiKey: "st_test", UpstreamModelName: "deepseek-v4.1-flash-free",
+			ChannelOtherSettings: dto.ChannelOtherSettings{OpenCodeTextTools: &textTools},
+		},
+	}
+	adaptor := &Adaptor{}
+	adaptor.Init(info)
+	stream := true
+	converted, err := adaptor.ConvertOpenAIRequest(nil, info, &dto.GeneralOpenAIRequest{
+		Model:    "deepseek-v4.1-flash-free",
+		Messages: []dto.Message{{Role: "user", Content: "use the tool"}},
+		Stream:   &stream,
+		Tools: []dto.ToolCallRequest{{
+			Type: "function",
+			Function: dto.FunctionRequest{
+				Name:       "lookup",
+				Parameters: []byte(`{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}`),
+			},
+		}},
+	})
+	require.NoError(t, err)
+	body := converted.(map[string]any)
+	assert.NotContains(t, body, "tools")
+	messages := body["messages"].([]any)
+	system := messages[0].(map[string]any)["content"].(string)
+	assert.Contains(t, system, textToolCallPrefix)
+	assert.Contains(t, system, "- lookup:")
+}
+
+func TestRenderTextToolResponseProducesStandardToolCall(t *testing.T) {
+	protocol := &textToolProtocol{allowed: map[string]struct{}{"lookup": {}}}
+	response := map[string]any{
+		"id": "chat_1", "model": "deepseek-v4.1-flash-free",
+		"choices": []any{map[string]any{
+			"message": map[string]any{
+				"role":    "assistant",
+				"content": `I will check. <new_api_tool_call>{"name":"lookup","arguments":{"city":"Shanghai"}}</new_api_tool_call>`,
+			},
+		}},
+		"usage": map[string]any{"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7},
+	}
+	data, err := renderTextToolResponse(response, protocol)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"finish_reason":"tool_calls"`)
+	assert.Contains(t, string(data), `"name":"lookup"`)
+	assert.Contains(t, string(data), `"arguments":"{\"city\":\"Shanghai\"}"`)
+	assert.NotContains(t, string(data), textToolCallPrefix)
+}
+
+func TestTextToolStreamConvertsUpstreamSSE(t *testing.T) {
+	upstream := `data: {"id":"chat_1","model":"deepseek-v4.1-flash-free","choices":[{"delta":{"content":"<new_api_tool_call>{\"name\":\"lookup\",\"arguments\":{\"city\":\"Shanghai\"}}</new_api_tool_call>"},"finish_reason":null}]}
+
+data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+
+`
+	stream := newTextToolStream(io.NopCloser(strings.NewReader(upstream)), &textToolProtocol{
+		allowed: map[string]struct{}{"lookup": {}},
+	})
+	body, err := io.ReadAll(stream)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"finish_reason":"tool_calls"`)
+	assert.Contains(t, string(body), `"name":"lookup"`)
+	assert.NotContains(t, string(body), textToolCallPrefix)
+}
+
 func TestSessionHeaders(t *testing.T) {
 	headers := sessionHeaders("conversation", "channel:1")
 	session := headers["x-opencode-session"]
@@ -425,6 +495,7 @@ func TestResponsesClientToolsRoundTrip(t *testing.T) {
 				info := &relaycommon.RelayInfo{
 					ChannelMeta: &relaycommon.ChannelMeta{
 						ApiKey: "st_test", UpstreamModelName: "deepseek-v4.1-flash-free",
+						ChannelOtherSettings: dto.ChannelOtherSettings{OpenCodeTextTools: lo.ToPtr(false)},
 					},
 					RelayFormat: types.RelayFormatOpenAIResponses,
 					RelayMode:   relayconstant.RelayModeResponses,

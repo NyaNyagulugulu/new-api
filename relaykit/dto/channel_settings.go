@@ -136,6 +136,9 @@ type ChannelOtherSettings struct {
 	// /v1/chat/completions endpoint. When unset, chat completions keep using
 	// the native /api/chat protocol.
 	OllamaOpenAIChat bool `json:"ollama_openai_chat,omitempty"`
+	// OpenCodeTextTools carries client function calls as text in OpenCode CLI mode.
+	// Nil uses text-tool compatibility mode for OpenCode CLI/free-tier requests.
+	OpenCodeTextTools *bool `json:"opencode_text_tools,omitempty"`
 	// ToolLossPolicy is a channel-level opt-in for request-phase conversion
 	// rejection. Empty follows the default allow policy. Accepted values:
 	// "", "allow", "safe", "strict".

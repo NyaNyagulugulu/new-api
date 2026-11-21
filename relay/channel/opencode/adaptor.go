@@ -49,6 +49,8 @@ type Adaptor struct {
 	clientStream     bool
 	responsesViaChat bool
 	sessionSeed      string
+	textToolsEnabled bool
+	textTools        *textToolProtocol
 	// reverse maps the opaque wire name of a shaped tool back to the caller's.
 	reverse map[string]string
 }
@@ -60,6 +62,9 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 	a.clientStream = info != nil && info.IsStream
 	a.responsesViaChat = false
 	a.sessionSeed = ""
+	a.reverse = nil
+	a.textToolsEnabled = false
+	a.textTools = nil
 	if info == nil || info.ChannelMeta == nil {
 		a.keyless = true
 		a.cliMode = true
@@ -68,6 +73,10 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 	key := strings.TrimSpace(info.ApiKey)
 	a.keyless = key == "" || strings.EqualFold(key, "EMPTY")
 	a.cliMode = a.keyless || strings.HasPrefix(key, "st_")
+	a.textToolsEnabled = a.cliMode
+	if a.cliMode && info.ChannelOtherSettings.OpenCodeTextTools != nil {
+		a.textToolsEnabled = *info.ChannelOtherSettings.OpenCodeTextTools
+	}
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
@@ -195,13 +204,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if err != nil {
 		return nil, fmt.Errorf("encode request for the free tier: %w", err)
 	}
-	a.freeTierStream = true
-	a.clientStream = request.Stream != nil && *request.Stream
-	a.sessionSeed = conversationSessionSeed(info, body)
-	body["stream"] = true
-	a.reverse = shapeRequest(body, "chat", upstreamModel(info, request.Model))
-	ensureCompletionLimit(body, "chat")
-	return body, nil
+	return a.prepareChatRequest(info, body, request)
 }
 
 func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.ClaudeRequest) (any, error) {
@@ -235,10 +238,21 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	if err != nil {
 		return nil, fmt.Errorf("encode request for the free tier: %w", err)
 	}
-	a.freeTierStream = true
 	a.responsesViaChat = true
+	return a.prepareChatRequest(info, body, chatRequest)
+}
+
+func (a *Adaptor) prepareChatRequest(info *relaycommon.RelayInfo, body map[string]any, request *dto.GeneralOpenAIRequest) (any, error) {
+	a.freeTierStream = true
 	a.clientStream = request.Stream != nil && *request.Stream
 	a.sessionSeed = conversationSessionSeed(info, body)
+	if a.textToolsEnabled {
+		protocol, err := prepareTextTools(body, request.Tools)
+		if err != nil {
+			return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest)
+		}
+		a.textTools = protocol
+	}
 	body["stream"] = true
 	a.reverse = shapeRequest(body, "chat", upstreamModel(info, request.Model))
 	ensureCompletionLimit(body, "chat")
@@ -277,7 +291,13 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
-	return channel.DoApiRequest(a, c, info, requestBody)
+	resp, err := channel.DoApiRequest(a, c, info, requestBody)
+	if err == nil && resp != nil && resp.StatusCode == http.StatusOK && resp.Body != nil && a.textTools != nil {
+		resp.Body = newTextToolStream(resp.Body, a.textTools)
+		resp.ContentLength = -1
+		resp.Header.Del("Content-Length")
+	}
+	return resp, err
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
