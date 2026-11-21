@@ -307,6 +307,19 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+	if resp != nil {
+		if stream, ok := resp.Body.(*textToolStream); ok {
+			defer func() {
+				if stream.err == nil {
+					return
+				}
+				if info != nil {
+					info.StreamStatus.MarkFailed("invalid_tool_response", "upstream_tool_conversion_error", http.StatusBadGateway)
+				}
+				err = types.NewOpenAIError(stream.err, types.ErrorCodeBadResponseBody, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
+			}()
+		}
+	}
 	if a.cliMode && a.freeTierStream && info != nil {
 		info.IsStream = a.clientStream
 		if !info.IsStream {

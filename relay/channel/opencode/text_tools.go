@@ -262,6 +262,7 @@ type textToolStream struct {
 	protocol *textToolProtocol
 	pending  []byte
 	done     bool
+	err      error
 }
 
 func newTextToolStream(source io.ReadCloser, protocol *textToolProtocol) io.ReadCloser {
@@ -273,7 +274,17 @@ func (s *textToolStream) Read(buffer []byte) (int, error) {
 		payload, err := s.convert()
 		s.done = true
 		if err != nil {
-			return 0, err
+			s.err = err
+			data, marshalErr := common.Marshal(map[string]any{
+				"error": map[string]any{
+					"type": "upstream_tool_conversion_error",
+					"code": "invalid_tool_response", "message": err.Error(),
+				},
+			})
+			if marshalErr != nil {
+				return 0, marshalErr
+			}
+			payload = append(append([]byte("data: "), data...), '\n', '\n')
 		}
 		s.pending = payload
 	}
@@ -286,7 +297,6 @@ func (s *textToolStream) Read(buffer []byte) (int, error) {
 }
 
 func (s *textToolStream) Close() error {
-	s.done = true
 	return s.source.Close()
 }
 
@@ -317,19 +327,61 @@ func renderTextToolResponse(response map[string]any, protocol *textToolProtocol)
 	}
 	choice, _ := choices[0].(map[string]any)
 	message, _ := choice["message"].(map[string]any)
+	if message == nil {
+		return nil, errors.New("text-tool response has no assistant message")
+	}
 	content, _ := message["content"].(string)
 	plain, calls := parseTextToolCalls(content, protocol)
-	message["content"] = plain
-	delete(message, "reasoning_content")
-	delete(choice, "message")
+	nativeCalls, _ := message["tool_calls"].([]any)
+	if len(nativeCalls) > 0 && len(calls) > 0 {
+		return nil, errors.New("upstream mixed native and text tool calls")
+	}
+	for _, raw := range nativeCalls {
+		call, ok := raw.(map[string]any)
+		if !ok {
+			return nil, errors.New("upstream returned an invalid native tool call")
+		}
+		function, _ := call["function"].(map[string]any)
+		name, _ := function["name"].(string)
+		if _, allowed := protocol.allowed[name]; !allowed {
+			return nil, fmt.Errorf("upstream selected tool %q which the client did not provide; native compatibility tools cannot be executed", name)
+		}
+		arguments, ok := function["arguments"].(string)
+		var object map[string]common.RawMessage
+		if !ok || common.UnmarshalJsonStr(arguments, &object) != nil || object == nil {
+			return nil, fmt.Errorf("upstream returned invalid arguments for tool %q", name)
+		}
+		if id, _ := call["id"].(string); id == "" {
+			call["id"] = "call_" + common.GetUUID()
+		}
+		call["index"] = len(calls)
+		calls = append(calls, call)
+	}
+	if plain == "" && len(calls) == 0 {
+		return nil, errors.New("upstream returned no visible text or client tool call")
+	}
+	finishReason, _ := choice["finish_reason"].(string)
+	if finishReason == "" {
+		return nil, errors.New("upstream text-tool response ended without a finish reason")
+	}
+	if len(calls) > 0 {
+		if finishReason != "stop" && finishReason != "tool_calls" {
+			return nil, fmt.Errorf("upstream tool call was not completed: finish_reason=%s", finishReason)
+		}
+		finishReason = "tool_calls"
+	}
 
 	model, _ := response["model"].(string)
 	id, _ := response["id"].(string)
 	events := make([]any, 0, 4)
+	delta := map[string]any{"role": "assistant", "content": plain}
+	if reasoning, ok := message["reasoning_content"].(string); ok && reasoning != "" {
+		delta["reasoning_content"] = reasoning
+	}
 	events = append(events, map[string]any{
 		"id": id, "object": "chat.completion.chunk", "model": model,
 		"choices": []any{map[string]any{
-			"index": 0, "delta": map[string]any{"role": "assistant", "content": plain},
+			"index": 0, "delta": delta,
 		}},
 	})
 	if len(calls) > 0 {
@@ -339,10 +391,6 @@ func renderTextToolResponse(response map[string]any, protocol *textToolProtocol)
 				"index": 0, "delta": map[string]any{"tool_calls": calls},
 			}},
 		})
-	}
-	finishReason := "stop"
-	if len(calls) > 0 {
-		finishReason = "tool_calls"
 	}
 	events = append(events, map[string]any{
 		"id": id, "object": "chat.completion.chunk", "model": model,

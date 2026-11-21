@@ -265,6 +265,7 @@ func TestRenderTextToolResponseProducesStandardToolCall(t *testing.T) {
 	response := map[string]any{
 		"id": "chat_1", "model": "deepseek-v4.1-flash-free",
 		"choices": []any{map[string]any{
+			"finish_reason": "stop",
 			"message": map[string]any{
 				"role":    "assistant",
 				"content": `I will check. <new_api_tool_call>{"name":"lookup","arguments":{"city":"Shanghai"}}</new_api_tool_call>`,
@@ -296,6 +297,104 @@ data: [DONE]
 	assert.Contains(t, string(body), `"finish_reason":"tool_calls"`)
 	assert.Contains(t, string(body), `"name":"lookup"`)
 	assert.NotContains(t, string(body), textToolCallPrefix)
+}
+
+func TestTextToolStreamPreservesNativeClientCallsAndRejectsCompatibilityCalls(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		tool      string
+		wantError bool
+	}{
+		{name: "client call", tool: "exec_command"},
+		{name: "compatibility call", tool: "shell", wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			payload, err := common.Marshal(map[string]any{
+				"id": "chat_1", "model": "deepseek-v4.1-flash-free",
+				"choices": []any{map[string]any{
+					"delta": map[string]any{"tool_calls": []any{map[string]any{
+						"index": 0, "id": "call_1", "type": "function",
+						"function": map[string]any{"name": tc.tool, "arguments": `{"cmd":"pwd"}`},
+					}}},
+				}},
+			})
+			require.NoError(t, err)
+			upstream := "data: " + string(payload) + "\n\n" +
+				"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n" +
+				"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":4,\"total_tokens\":7}}\n\n" +
+				"data: [DONE]\n\n"
+			stream := newTextToolStream(io.NopCloser(strings.NewReader(upstream)), &textToolProtocol{
+				allowed: map[string]struct{}{"exec_command": {}},
+			})
+			body, err := io.ReadAll(stream)
+			require.NoError(t, err)
+			if tc.wantError {
+				assert.Contains(t, string(body), `"code":"invalid_tool_response"`)
+				assert.NotContains(t, string(body), "[DONE]")
+				assert.NotContains(t, string(body), `"finish_reason":"stop"`)
+				return
+			}
+			assert.Contains(t, string(body), `"name":"exec_command"`)
+			assert.Contains(t, string(body), `"id":"call_1"`)
+			assert.Contains(t, string(body), `"total_tokens":7`)
+			assert.Contains(t, string(body), `"finish_reason":"tool_calls"`)
+		})
+	}
+}
+
+func TestTextToolEmptyResponseIsAnError(t *testing.T) {
+	upstream := "data: {\"choices\":[{\"delta\":{\"content\":\"\"},\"finish_reason\":\"stop\"}]}\n\n" +
+		"data: [DONE]\n\n"
+	stream := newTextToolStream(io.NopCloser(strings.NewReader(upstream)), &textToolProtocol{
+		allowed: map[string]struct{}{"exec_command": {}},
+	})
+	body, err := io.ReadAll(stream)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"code":"invalid_tool_response"`)
+	assert.NotContains(t, string(body), `"finish_reason":"stop"`)
+	assert.NotContains(t, string(body), "[DONE]")
+}
+
+func TestTextToolNativeCallReachesResponsesClient(t *testing.T) {
+	previousTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = previousTimeout })
+	for _, stream := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(recorder)
+			ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			info := &relaycommon.RelayInfo{
+				ChannelMeta: &relaycommon.ChannelMeta{ApiKey: "st_test", UpstreamModelName: "deepseek-v4.1-flash-free"},
+				RelayFormat: types.RelayFormatOpenAIResponses,
+				RelayMode:   relayconstant.RelayModeResponses,
+				IsStream:    stream, DisablePing: true,
+			}
+			adaptor := &Adaptor{}
+			adaptor.Init(info)
+			_, err := adaptor.ConvertOpenAIResponsesRequest(ctx, info, dto.OpenAIResponsesRequest{
+				Model: "deepseek-v4.1-flash-free", Input: []byte(`"create a file"`), Stream: &stream,
+				Tools: []byte(`[{"type":"function","name":"exec_command","parameters":{"type":"object","properties":{"cmd":{"type":"string"}},"required":["cmd"]}}]`),
+			})
+			require.NoError(t, err)
+			require.NotNil(t, adaptor.textTools)
+			sse := "data: {\"id\":\"chat_1\",\"model\":\"deepseek-v4.1-flash-free\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"exec_command\",\"arguments\":\"{\\\"cmd\\\":\\\"pwd\\\"}\"}}]}}]}\n\n" +
+				"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n" +
+				"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":4,\"total_tokens\":7}}\n\n" +
+				"data: [DONE]\n\n"
+			upstream := &http.Response{
+				StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body: newTextToolStream(io.NopCloser(strings.NewReader(sse)), adaptor.textTools),
+			}
+			usage, apiErr := adaptor.DoResponse(ctx, upstream, info)
+			require.Nil(t, apiErr)
+			require.NotNil(t, usage)
+			assert.Equal(t, 7, usage.(*dto.Usage).TotalTokens)
+			assert.Contains(t, recorder.Body.String(), `"name":"exec_command"`)
+			assert.Contains(t, recorder.Body.String(), `"call_id":"call_1"`)
+			assert.Contains(t, recorder.Body.String(), `"type":"function_call"`)
+		})
+	}
 }
 
 func TestSessionHeaders(t *testing.T) {
