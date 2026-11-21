@@ -24,6 +24,7 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 	info.IsStream = true
 	clientConn := info.ClientWs
 	targetConn := info.TargetWs
+	contentAudit := common.ContentAuditRecorderForRequest(c)
 
 	clientClosed := make(chan struct{})
 	targetClosed := make(chan struct{})
@@ -46,13 +47,16 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 			case <-c.Done():
 				return
 			default:
-				_, message, err := clientConn.ReadMessage()
+				kind, message, err := clientConn.ReadMessage()
 				if err != nil {
 					if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 						errChan <- fmt.Errorf("error reading from client: %v", err)
 					}
 					close(clientClosed)
 					return
+				}
+				if contentAudit != nil {
+					contentAudit.RecordContentAuditFrame("client", kind, message)
 				}
 
 				realtimeEvent := &dto.RealtimeEvent{}
@@ -106,13 +110,16 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 			case <-c.Done():
 				return
 			default:
-				_, message, err := targetConn.ReadMessage()
+				kind, message, err := targetConn.ReadMessage()
 				if err != nil {
 					if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 						errChan <- fmt.Errorf("error reading from target: %v", err)
 					}
 					close(targetClosed)
 					return
+				}
+				if contentAudit != nil {
+					contentAudit.RecordContentAuditFrame("upstream", kind, message)
 				}
 				info.SetFirstResponseTime()
 				realtimeEvent := &dto.RealtimeEvent{}

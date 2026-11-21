@@ -96,6 +96,7 @@ type responsesWSSession struct {
 	runner         ResponsesWSRequestRunner
 	request        *http.Request
 	requestID      string
+	contentAudit   common.ContentAuditFrameRecorder
 	nextEventIndex int
 	workers        sync.WaitGroup
 	closeOnce      sync.Once
@@ -126,7 +127,8 @@ type responsesWSSession struct {
 func ResponsesWebSocketHelper(c *gin.Context, client *websocket.Conn, runner ResponsesWSRequestRunner) *types.NewAPIError {
 	ctx, cancel := context.WithCancel(c.Request.Context())
 	s := &responsesWSSession{ctx: ctx, cancel: cancel, client: client, runner: runner,
-		request: c.Request.Clone(ctx), requestID: c.GetString(common.RequestIdKey)}
+		request: c.Request.Clone(ctx), requestID: c.GetString(common.RequestIdKey),
+		contentAudit: common.ContentAuditRecorderForRequest(c)}
 	if s.requestID == "" {
 		s.requestID = common.NewRequestId()
 	}
@@ -143,9 +145,12 @@ func ResponsesWebSocketHelper(c *gin.Context, client *websocket.Conn, runner Res
 	}()
 
 	for {
-		_, message, err := client.ReadMessage()
+		kind, message, err := client.ReadMessage()
 		if err != nil {
 			return nil
+		}
+		if s.contentAudit != nil {
+			s.contentAudit.RecordContentAuditFrame("client", kind, message)
 		}
 		envelope, streamID, err := parseResponsesWSEnvelope(message)
 		eventType := envelope.Type
@@ -641,6 +646,11 @@ func (s *responsesWSSession) startTargetReader(target *websocket.Conn) {
 		for {
 			kind, body, err := target.ReadMessage()
 			incoming := responsesWSMessage{kind: kind, body: body, err: err}
+			if err == nil {
+				if s.contentAudit != nil {
+					s.contentAudit.RecordContentAuditFrame("upstream", kind, body)
+				}
+			}
 			if state := s.getCurrent(); state != nil {
 				select {
 				case state.inbox <- incoming:

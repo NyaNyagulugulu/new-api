@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   Activity,
+  Archive,
   Box,
   ClipboardList,
   CreditCard,
@@ -40,7 +41,13 @@ import {
 import { useTranslation } from 'react-i18next'
 
 import type { SidebarBadges, SidebarData } from '@/components/layout/types'
+import {
+  ADMIN_PERMISSION_ACTIONS,
+  ADMIN_PERMISSION_RESOURCES,
+  hasPermission,
+} from '@/lib/admin-permissions'
 import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 /**
  * Root navigation groups for the application sidebar.
@@ -50,6 +57,12 @@ import { ROLE } from '@/lib/roles'
  */
 export function useSidebarData(badges: SidebarBadges = {}): SidebarData {
   const { t } = useTranslation()
+  const user = useAuthStore((state) => state.auth.user)
+  const canReadContentAudit = hasPermission(
+    user,
+    ADMIN_PERMISSION_RESOURCES.CONTENT_AUDIT,
+    ADMIN_PERMISSION_ACTIONS.READ
+  )
 
   return {
     navGroups: [
@@ -98,6 +111,15 @@ export function useSidebarData(badges: SidebarBadges = {}): SidebarData {
             url: '/usage-logs/audit',
             icon: ClipboardList,
           },
+          ...(canReadContentAudit
+            ? [
+                {
+                  title: t('Content Audit'),
+                  url: '/usage-logs/content-audit',
+                  icon: Archive,
+                },
+              ]
+            : []),
           {
             title: t('Task Logs'),
             url: '/usage-logs/task',

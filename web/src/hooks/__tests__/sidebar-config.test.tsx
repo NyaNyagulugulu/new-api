@@ -202,6 +202,41 @@ describe('audit log sidebar entry', () => {
   })
 })
 
+describe('content audit sidebar entry', () => {
+  it('is visible only after the administrator is granted content audit access', () => {
+    useAuthStore.getState().auth.setUser({
+      id: 2,
+      username: 'content-auditor',
+      role: ROLE.ADMIN,
+      permissions: {
+        admin_permissions: { content_audit: { read: false } },
+      },
+    })
+    const { result } = renderHook(() => useSidebarData().navGroups)
+    expect(
+      result.current
+        .flatMap((group) => group.items)
+        .some((item) => item.title === 'Content Audit')
+    ).toBe(false)
+
+    act(() => {
+      useAuthStore.getState().auth.setUser({
+        id: 2,
+        username: 'content-auditor',
+        role: ROLE.ADMIN,
+        permissions: {
+          admin_permissions: { content_audit: { read: true } },
+        },
+      })
+    })
+    expect(
+      result.current
+        .flatMap((group) => group.items)
+        .some((item) => item.title === 'Content Audit')
+    ).toBe(true)
+  })
+})
+
 describe('model pricing badge', () => {
   function issue(modelName: string, pluginKey: string): ModelPricingIssue {
     return {

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -693,6 +694,74 @@ func TestAuditRoleVisibilityAndPermissions(t *testing.T) {
 	for _, credential := range []string{pat, jwt} {
 		assert.Equal(t, http.StatusForbidden, auditRequest(router, "GET", "/api/audit", credential).Code)
 		assert.Equal(t, http.StatusOK, auditRequest(router, "GET", "/api/audit/self", credential).Code)
+	}
+}
+
+func TestContentAuditEndpointsRequirePermissionAndDoNotInlineActiveContent(t *testing.T) {
+	admin, pat := setupAccessTokenAudit(t)
+	require.NoError(t, model.MigrateContentAuditLogs())
+	dir := t.TempDir()
+	t.Setenv("CONTENT_AUDIT_DIR", dir)
+	relativeFile := filepath.ToSlash(filepath.Join("2026", "01", "01", "content-event", "response.bin"))
+	fullPath := filepath.Join(dir, filepath.FromSlash(relativeFile))
+	require.NoError(t, os.MkdirAll(filepath.Dir(fullPath), 0o700))
+	require.NoError(t, os.WriteFile(fullPath, []byte(`<script>must-not-execute</script>`), 0o600))
+	now := time.Now().Unix()
+	entry := &model.ContentAuditLog{
+		EventId:             "0123456789abcdef0123456789abcdef",
+		UserId:              admin.Id,
+		Username:            admin.Username,
+		CreatedAt:           now,
+		ExpiresAt:           now + common.ContentAuditRetentionSeconds(),
+		Kind:                "image",
+		ModelName:           "image-audit",
+		Method:              http.MethodPost,
+		Path:                "/v1/images/generations",
+		StatusCode:          http.StatusOK,
+		Success:             true,
+		RequestPreview:      "retained request prompt",
+		RequestFile:         filepath.ToSlash(filepath.Join("2026", "01", "01", "content-event", "request.bin")),
+		ResponseFile:        relativeFile,
+		ResponseContentType: "text/html",
+	}
+	require.NoError(t, model.CreateContentAuditLog(entry))
+
+	router := gin.New()
+	router.Use(middleware.RequestId(), middleware.AccessTokenAudit())
+	router.GET("/api/content_audit/", middleware.AdminAuth(), middleware.RequirePermission(authz.ContentAuditRead), GetContentAuditLogs)
+	router.GET("/api/content_audit/:event_id", middleware.AdminAuth(), middleware.RequirePermission(authz.ContentAuditRead), GetContentAuditLogDetail)
+	router.GET("/api/content_audit/:event_id/:part", middleware.AdminAuth(), middleware.RequirePermission(authz.ContentAuditRead), GetContentAuditContent)
+
+	response := auditRequest(router, "GET", "/api/content_audit/", pat)
+	assert.Equal(t, http.StatusForbidden, response.Code)
+	require.NoError(t, model.DB.Transaction(func(tx *gorm.DB) error {
+		return authz.SetUserPermissionsInTx(tx, admin.Id, authz.PermissionsMap{authz.ResourceContentAudit: {authz.ActionRead: true}})
+	}))
+	require.NoError(t, authz.ReloadPolicy())
+
+	response = auditRequest(router, "GET", "/api/content_audit/", pat)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.NotContains(t, response.Body.String(), "retained request prompt", "the list must not expose retained content")
+	assert.NotContains(t, response.Body.String(), relativeFile, "server file paths must stay private")
+
+	response = auditRequest(router, "GET", "/api/content_audit/"+entry.EventId, pat)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Contains(t, response.Body.String(), "retained request prompt")
+	assert.NotContains(t, response.Body.String(), relativeFile)
+
+	response = auditRequest(router, "GET", "/api/content_audit/"+entry.EventId+"/response?inline=1", pat)
+	require.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, "text/plain; charset=utf-8", response.Header().Get("Content-Type"))
+	assert.Equal(t, "nosniff", response.Header().Get("X-Content-Type-Options"))
+	assert.Contains(t, response.Header().Get("Content-Security-Policy"), "sandbox")
+	assert.Equal(t, `<script>must-not-execute</script>`, response.Body.String())
+
+	var audits []model.AuditLog
+	require.NoError(t, model.LOG_DB.Where("action = ?", "content_audit.view").Order("id").Find(&audits).Error)
+	require.Len(t, audits, 2)
+	for _, audit := range audits {
+		assert.Equal(t, admin.Id, audit.UserId)
+		assert.NotContains(t, audit.Content, "must-not-execute")
 	}
 }
 

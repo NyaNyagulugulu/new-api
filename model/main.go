@@ -213,6 +213,9 @@ func InitDB() (err error) {
 		sqlDB.SetConnMaxLifetime(time.Second * time.Duration(common.GetEnvOrDefault("SQL_MAX_LIFETIME", 60)))
 
 		if !common.IsMasterNode {
+			if DB.Migrator().HasTable(&ContentAuditLog{}) {
+				MarkContentAuditReady()
+			}
 			// Only the master node migrates. A node that cannot read the deadline
 			// keeps rejecting legacy access tokens instead of refusing to start.
 			if err := EnsureLegacyAccessTokenRetireAt(common.GetTimestamp()); err != nil {
@@ -352,6 +355,7 @@ func migrateDB() error {
 		&Redemption{},
 		&Ability{},
 		&Log{},
+		&ContentAuditLog{},
 		&Midjourney{},
 		&TopUp{},
 		&QuotaData{},
@@ -380,6 +384,7 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
+	MarkContentAuditReady()
 	if err := InitializeUserAuthVersions(); err != nil {
 		return err
 	}

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -16,6 +17,90 @@ import (
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/schema"
 )
+
+func TestContentAuditLogDatabaseMatrix(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			var driver gorm.Dialector
+			switch dialect {
+			case "sqlite":
+				driver = sqlite.Open(":memory:")
+			case "mysql":
+				dsn := os.Getenv("TEST_MYSQL_DSN")
+				if dsn == "" {
+					t.Skip("TEST_MYSQL_DSN is not configured")
+				}
+				driver = mysql.Open(dsn)
+			case "postgres":
+				dsn := os.Getenv("TEST_POSTGRES_DSN")
+				if dsn == "" {
+					t.Skip("TEST_POSTGRES_DSN is not configured")
+				}
+				driver = postgres.Open(dsn)
+			}
+			db, err := gorm.Open(driver, &gorm.Config{NamingStrategy: schema.NamingStrategy{TablePrefix: "content_audit_matrix_"}})
+			require.NoError(t, err)
+			sqlDB, err := db.DB()
+			require.NoError(t, err)
+			sqlDB.SetMaxOpenConns(1)
+			versionSQL := "SELECT version()"
+			if dialect == "sqlite" {
+				versionSQL = "SELECT sqlite_version()"
+			}
+			var version string
+			require.NoError(t, db.Raw(versionSQL).Scan(&version).Error)
+			t.Logf("database version: %s", version)
+
+			previousDB := DB
+			DB = db
+			t.Cleanup(func() {
+				DB = previousDB
+				assert.NoError(t, db.Migrator().DropTable(&ContentAuditLog{}))
+				assert.NoError(t, sqlDB.Close())
+			})
+
+			for range 2 {
+				require.NoError(t, MigrateContentAuditLogs())
+			}
+			now := common.GetTimestamp()
+			entries := []*ContentAuditLog{
+				{EventId: "content-event-chat", UserId: 1, Username: "alice", CreatedAt: now - 20, RequestPreview: "retained keyword in chat", ResponsePreview: "chat answer", Kind: "chat", ModelName: "gpt-audit", Success: true},
+				{EventId: "content-event-image", UserId: 2, Username: "bob", CreatedAt: now - 10, RequestPreview: "image prompt", ResponsePreview: "retained keyword in image", Kind: "image", ModelName: "image-audit", Success: false, ResponseFile: "image/response.bin"},
+				{EventId: "content-event-expired", UserId: 1, Username: "alice", CreatedAt: 1, ExpiresAt: 2, Kind: "other", ModelName: "old-audit"},
+			}
+			for _, entry := range entries {
+				require.NoError(t, CreateContentAuditLog(entry))
+			}
+			assert.Error(t, db.Create(&ContentAuditLog{EventId: "content-event-chat"}).Error, "event IDs must remain unique")
+
+			logs, total, err := GetContentAuditLogs(ContentAuditFilter{Query: "retained keyword"}, 0, 10)
+			require.NoError(t, err)
+			assert.EqualValues(t, 2, total)
+			require.Len(t, logs, 2)
+			assert.Equal(t, "content-event-image", logs[0].EventId, "newest records sort first")
+			assert.True(t, logs[0].HasResponse)
+
+			logs, total, err = GetContentAuditLogs(ContentAuditFilter{Kind: "chat"}, 0, 10)
+			require.NoError(t, err)
+			assert.EqualValues(t, 1, total)
+			require.Len(t, logs, 1)
+			assert.Equal(t, "content-event-chat", logs[0].EventId)
+			assert.Equal(t, now-20+common.ContentAuditRetentionSeconds(), logs[0].ExpiresAt)
+
+			entry, err := GetContentAuditLogByEventId("content-event-image")
+			require.NoError(t, err)
+			assert.Equal(t, "image-audit", entry.ModelName)
+
+			expired, err := GetExpiredContentAuditLogs(context.Background(), now-1, 10)
+			require.NoError(t, err)
+			require.Len(t, expired, 1)
+			assert.Equal(t, "content-event-expired", expired[0].EventId)
+			deleted, err := DeleteContentAuditLogs(context.Background(), []int64{expired[0].Id})
+			require.NoError(t, err)
+			assert.EqualValues(t, 1, deleted)
+		})
+	}
+}
 
 // TestAuditLogSortIndexDatabaseMatrix verifies audit ordering and index migrations across supported databases.
 func TestAuditLogSortIndexDatabaseMatrix(t *testing.T) {

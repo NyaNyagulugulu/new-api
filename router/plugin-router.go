@@ -153,7 +153,7 @@ func productionPluginRouteHandlers(generation *jsplugin.RoutingGeneration, group
 		middleware.ModelRequestRateLimit(),
 		middleware.PrepareTaskPluginRoute(),
 		middleware.Distribute(),
-		controller.RelayTask,
+		middleware.RelayContentAuditedHandler(controller.RelayTask),
 	}
 }
 

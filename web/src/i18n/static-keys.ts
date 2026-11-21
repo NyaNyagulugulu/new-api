@@ -928,4 +928,16 @@ export const STATIC_I18N_KEYS = [
   'Download .sh',
   'Terminal',
   'If you download the script, run it from a terminal. It asks for the gateway URL when none is passed.',
+
+  // Content audit UI, permission catalog, and dynamic content-kind labels.
+  'Content Audit',
+  'View retained relay content',
+  'View request and response content retained for compliance traceability. Grant only to administrators who need this access.',
+  'Responses',
+  'Images',
+  'Text to speech',
+  'Speech recognition',
+  'Realtime',
+  'WebSocket',
+  'Viewed retained relay content {{event_id}} (part: {{part}})',
 ] as const
