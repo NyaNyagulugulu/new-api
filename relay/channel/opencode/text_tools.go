@@ -17,7 +17,9 @@ const (
 	textToolCallSuffix = "</new_api_tool_call>"
 	textToolPrompt     = `When you need to call a client tool, do not use native tool calling. Instead output exactly one tag per call in this form:
 <new_api_tool_call>{"name":"tool_name","arguments":{"key":"value"}}</new_api_tool_call>
-Use only a tool from the list below. The arguments value must be a JSON object that follows that tool's schema. Do not put markdown around the tag and do not add commentary inside it.`
+Use only a tool from the list below. The arguments value must be a JSON object that follows that tool's schema. Do not put markdown around the tag and do not add commentary inside it.
+File, shell, workspace, code, and external-action requests require a client tool call. For those requests, you MUST emit the tag, must not finish with an empty response, and must not answer with only reasoning or an explanation.`
+	textToolReminder = `Tool protocol reminder: if the current user request requires creating, editing, inspecting, or running anything, emit the required client-tool tag now. Never finish that request with an empty response.`
 )
 
 type textToolProtocol struct {
@@ -147,6 +149,7 @@ func extractResponsesTextTools(raw []byte) []dto.ToolCallRequest {
 
 func appendTextToolPrompt(body map[string]any, prompt string) {
 	messages, _ := body["messages"].([]any)
+	promptAdded := false
 	for _, raw := range messages {
 		message, ok := raw.(map[string]any)
 		if !ok {
@@ -158,18 +161,37 @@ func appendTextToolPrompt(body map[string]any, prompt string) {
 		}
 		content, _ := message["content"].(string)
 		if strings.Contains(content, textToolCallPrefix) || strings.Contains(content, textToolPrompt) {
-			return
+			promptAdded = true
+			break
 		}
 		if content == "" {
 			message["content"] = prompt
 		} else {
 			message["content"] = content + "\n\n" + prompt
 		}
-		return
+		promptAdded = true
+		break
 	}
-	body["messages"] = append([]any{
-		map[string]any{"role": "system", "content": prompt},
-	}, messages...)
+	if !promptAdded {
+		messages = append([]any{
+			map[string]any{"role": "system", "content": prompt},
+		}, messages...)
+		body["messages"] = messages
+	}
+	for index := len(messages) - 1; index >= 0; index-- {
+		message, ok := messages[index].(map[string]any)
+		if !ok {
+			continue
+		}
+		if role, _ := message["role"].(string); role != "user" {
+			continue
+		}
+		content, ok := message["content"].(string)
+		if ok && !strings.Contains(content, textToolReminder) {
+			message["content"] = content + "\n\n" + textToolReminder
+		}
+		break
+	}
 }
 
 func rewriteTextToolHistory(body map[string]any) {
