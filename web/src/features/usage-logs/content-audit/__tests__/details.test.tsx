@@ -30,6 +30,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { ContentAuditLogs } from '..'
 import type { ContentAuditLog } from '../api'
 import { ContentAuditDetailsDialog } from '../components/content-audit-details-dialog'
+import { buildContentAuditConversation } from '../lib/conversation'
 
 const entry: ContentAuditLog = {
   id: 1,
@@ -90,26 +91,155 @@ async function renderDialog() {
   return screen.findByRole('dialog', { name: 'Retained content' })
 }
 
-it('shows retained request and response previews without executing content', async () => {
-  vi.spyOn(api, 'get').mockResolvedValue({
-    data: {
-      success: true,
-      data: {
-        ...entry,
-        request_preview: '<script>retained request prompt</script>',
-        response_preview: '{"answer":"retained response"}',
-      },
-    },
+it('renders retained chat as a conversation without executing content', async () => {
+  vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    if (url === `/api/content_audit/${entry.event_id}`) {
+      return {
+        data: {
+          success: true,
+          data: {
+            ...entry,
+            request_preview: 'retained request prompt',
+            response_preview: 'retained response',
+          },
+        },
+      } as never
+    }
+    if (url.endsWith('/request')) {
+      return {
+        data: new Blob(
+          [
+            JSON.stringify({
+              model: 'gpt-audit',
+              messages: [
+                {
+                  role: 'user',
+                  content: '<script>retained request prompt</script>',
+                },
+              ],
+            }),
+          ],
+          { type: 'application/json' }
+        ),
+      } as never
+    }
+    if (url.endsWith('/response')) {
+      return {
+        data: new Blob(
+          [
+            JSON.stringify({
+              choices: [
+                {
+                  message: {
+                    role: 'assistant',
+                    content: 'retained response',
+                  },
+                },
+              ],
+            }),
+          ],
+          { type: 'application/json' }
+        ),
+      } as never
+    }
+    throw new Error(`unexpected request: ${url}`)
   })
   const dialog = await renderDialog()
   expect(
-    within(dialog).getByText('<script>retained request prompt</script>')
+    await within(dialog).findByText('<script>retained request prompt</script>')
   ).toBeVisible()
-  await userEvent.click(within(dialog).getByRole('tab', { name: 'Response' }))
-  expect(
-    within(dialog).getByText('{"answer":"retained response"}')
-  ).toBeVisible()
+  expect(await within(dialog).findByText('retained response')).toBeVisible()
+  expect(within(dialog).getByText('User')).toBeVisible()
+  expect(within(dialog).getByText('Assistant')).toBeVisible()
   expect(dialog.querySelector('script')).toBeNull()
+})
+
+it('parses Responses SSE into readable reasoning, text, and tool calls', () => {
+  const conversation = buildContentAuditConversation({
+    kind: 'responses',
+    requestText: JSON.stringify({
+      model: 'gpt-audit',
+      input: 'inspect the repository',
+    }),
+    requestContentType: 'application/json',
+    responseText: [
+      'event: response.reasoning_text.delta',
+      'data: {"type":"response.reasoning_text.delta","delta":"Thinking through the task"}',
+      '',
+      'event: response.output_text.delta',
+      'data: {"type":"response.output_text.delta","delta":"Final answer"}',
+      '',
+      'event: response.output_item.added',
+      'data: {"type":"response.output_item.added","item":{"type":"function_call","id":"call-1","name":"exec_command","arguments":""}}',
+      '',
+      'event: response.function_call_arguments.delta',
+      'data: {"type":"response.function_call_arguments.delta","item_id":"call-1","delta":"{\\"cmd\\":\\"pwd\\"}"}',
+      '',
+      'data: [DONE]',
+      '',
+    ].join('\n'),
+    responseContentType: 'text/event-stream',
+  })
+  expect(conversation.parseMode).toBe('conversation')
+  expect(conversation.messages[0]).toMatchObject({
+    role: 'user',
+    text: 'inspect the repository',
+  })
+  expect(conversation.messages[1]).toMatchObject({
+    role: 'assistant',
+    text: 'Final answer',
+    reasoning: 'Thinking through the task',
+  })
+  expect(conversation.messages[1].tools[0]).toMatchObject({
+    id: 'call-1',
+    name: 'exec_command',
+    arguments: '{"cmd":"pwd"}',
+  })
+})
+
+it('classifies Responses history tool and reasoning items as assistant/tool roles', () => {
+  const conversation = buildContentAuditConversation({
+    kind: 'responses',
+    requestText: JSON.stringify({
+      input: [
+        { type: 'message', role: 'user', content: 'inspect files' },
+        {
+          type: 'reasoning',
+          summary: [{ type: 'summary_text', text: 'Need to inspect files' }],
+        },
+        {
+          type: 'function_call',
+          id: 'call-1',
+          name: 'exec_command',
+          arguments: '{"cmd":"ls"}',
+        },
+        {
+          type: 'function_call_output',
+          call_id: 'call-1',
+          output: 'README.md',
+        },
+      ],
+    }),
+    requestContentType: 'application/json',
+    responseContentType: 'application/json',
+  })
+  expect(conversation.messages.map((message) => message.role)).toEqual([
+    'user',
+    'assistant',
+    'assistant',
+    'tool',
+  ])
+  expect(conversation.messages[1].reasoning).toBe('Need to inspect files')
+  expect(conversation.messages[2].tools[0]).toMatchObject({
+    id: 'call-1',
+    name: 'exec_command',
+    arguments: '{"cmd":"ls"}',
+  })
+  expect(conversation.messages[3].tools[0]).toMatchObject({
+    id: 'call-1',
+    name: 'tool',
+    output: 'README.md',
+  })
 })
 
 it('denies the page when content audit permission is missing', async () => {

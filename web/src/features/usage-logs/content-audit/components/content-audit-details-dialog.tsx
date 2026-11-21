@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { Download, Loader2 } from 'lucide-react'
+import { ChevronDown, Download, Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -25,6 +25,11 @@ import { Dialog } from '@/components/dialog'
 import { StatusBadge } from '@/components/status-badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import dayjs from '@/lib/dayjs'
 import { handleServerError } from '@/lib/handle-server-error'
@@ -48,6 +53,7 @@ import {
   isPreviewableImageContentType,
   isPreviewableTextContentType,
 } from '../lib/content-audit'
+import { ContentAuditConversation } from './content-audit-conversation'
 
 const PART_LABELS: Record<ContentAuditPart, string> = {
   request: 'Request',
@@ -55,10 +61,12 @@ const PART_LABELS: Record<ContentAuditPart, string> = {
   websocket: 'WebSocket',
 }
 
+type ContentAuditTab = 'conversation' | ContentAuditPart
+
 export function ContentAuditDetailsDialog(props: { entry: ContentAuditLog }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  const [activePart, setActivePart] = useState<ContentAuditPart>('request')
+  const [activeTab, setActiveTab] = useState<ContentAuditTab>('conversation')
   const detail = useQuery({
     queryKey: ['content-audit-detail', props.entry.event_id],
     queryFn: () => getContentAuditLogDetail(props.entry.event_id),
@@ -73,13 +81,17 @@ export function ContentAuditDetailsDialog(props: { entry: ContentAuditLog }) {
     if (entry.has_websocket) parts.push('websocket')
     return parts
   }, [entry.has_request, entry.has_response, entry.has_websocket])
+  const availableTabs = useMemo<ContentAuditTab[]>(
+    () => (availableParts.length ? ['conversation', ...availableParts] : []),
+    [availableParts]
+  )
 
   useEffect(() => {
-    if (!open || availableParts.length === 0) return
-    if (!availableParts.includes(activePart)) {
-      setActivePart(availableParts[0])
+    if (!open || availableTabs.length === 0) return
+    if (!availableTabs.includes(activeTab)) {
+      setActiveTab(availableTabs[0])
     }
-  }, [activePart, availableParts, open])
+  }, [activeTab, availableTabs, open])
 
   const previewFor = (part: ContentAuditPart): string => {
     if (!detail.data) return ''
@@ -136,28 +148,47 @@ export function ContentAuditDetailsDialog(props: { entry: ContentAuditLog }) {
         </span>
       </div>
 
-      <DetailSection label={t('Request')}>
-        <DetailRow label={t('User')} value={entry.username || '—'} />
-        <DetailRow label={t('User ID')} value={entry.user_id || '—'} mono />
-        <DetailRow label={t('Model')} value={entry.model_name || '—'} mono />
-        <DetailRow
-          label={t('Route')}
-          value={`${entry.method} ${entry.path}`}
-          mono
-        />
-        <DetailRow
-          label={t('Request ID')}
-          value={entry.request_id || '—'}
-          mono
-        />
-        <DetailRow label='IP' value={entry.ip || '—'} mono />
-        <DetailRow label={t('Channel')} value={entry.channel_name || '—'} />
-        <DetailRow label={t('Node')} value={entry.node_name || '—'} mono />
-        <DetailRow
-          label={t('Retention expires')}
-          value={dayjs.unix(entry.expires_at).format('YYYY-MM-DD HH:mm:ss')}
-        />
-      </DetailSection>
+      <div className='text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs'>
+        <span>{entry.username || t('Unknown user')}</span>
+        <span className='font-mono'>{entry.model_name || '—'}</span>
+        <span className='font-mono'>{entry.channel_name || '—'}</span>
+        <span className='font-mono'>#{entry.request_id || entry.event_id}</span>
+      </div>
+
+      <Collapsible className='group bg-muted/20 rounded-lg border'>
+        <CollapsibleTrigger className='flex w-full items-center justify-between gap-3 px-3 py-2 text-left'>
+          <span className='text-xs font-medium'>{t('Metadata')}</span>
+          <ChevronDown className='text-muted-foreground size-4 transition-transform group-data-[panel-open]:rotate-180' />
+        </CollapsibleTrigger>
+        <CollapsibleContent className='px-3 pb-3'>
+          <DetailSection label={t('Request')}>
+            <DetailRow label={t('User')} value={entry.username || '—'} />
+            <DetailRow label={t('User ID')} value={entry.user_id || '—'} mono />
+            <DetailRow
+              label={t('Model')}
+              value={entry.model_name || '—'}
+              mono
+            />
+            <DetailRow
+              label={t('Route')}
+              value={`${entry.method} ${entry.path}`}
+              mono
+            />
+            <DetailRow
+              label={t('Request ID')}
+              value={entry.request_id || '—'}
+              mono
+            />
+            <DetailRow label='IP' value={entry.ip || '—'} mono />
+            <DetailRow label={t('Channel')} value={entry.channel_name || '—'} />
+            <DetailRow label={t('Node')} value={entry.node_name || '—'} mono />
+            <DetailRow
+              label={t('Retention expires')}
+              value={dayjs.unix(entry.expires_at).format('YYYY-MM-DD HH:mm:ss')}
+            />
+          </DetailSection>
+        </CollapsibleContent>
+      </Collapsible>
 
       {detail.isError && (
         <Alert variant='destructive'>
@@ -167,19 +198,29 @@ export function ContentAuditDetailsDialog(props: { entry: ContentAuditLog }) {
         </Alert>
       )}
 
-      {availableParts.length > 0 ? (
+      {availableTabs.length > 0 ? (
         <Tabs
-          value={activePart}
-          onValueChange={(value) => setActivePart(value as ContentAuditPart)}
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as ContentAuditTab)}
           className='min-h-0'
         >
           <TabsList aria-label={t('Retained content')}>
-            {availableParts.map((part) => (
-              <TabsTrigger key={part} value={part}>
-                {t(PART_LABELS[part])}
+            {availableTabs.map((tab) => (
+              <TabsTrigger key={tab} value={tab}>
+                {tab === 'conversation'
+                  ? t('Conversation')
+                  : t(PART_LABELS[tab])}
               </TabsTrigger>
             ))}
           </TabsList>
+          <TabsContent value='conversation' className='min-h-0'>
+            <ContentAuditConversation
+              entry={entry}
+              enabled={open && activeTab === 'conversation'}
+              requestPreview={previewFor('request')}
+              responsePreview={previewFor('response')}
+            />
+          </TabsContent>
           {availableParts.map((part) => (
             <TabsContent key={part} value={part} className='min-h-0'>
               <ContentAuditPartPreview
@@ -188,7 +229,7 @@ export function ContentAuditDetailsDialog(props: { entry: ContentAuditLog }) {
                 preview={previewFor(part)}
                 contentType={contentTypeFor(part)}
                 size={sizeFor(part)}
-                enabled={open && activePart === part}
+                enabled={open && activeTab === part}
               />
             </TabsContent>
           ))}

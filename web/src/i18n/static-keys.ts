@@ -940,4 +940,7 @@ export const STATIC_I18N_KEYS = [
   'Realtime',
   'WebSocket',
   'Viewed retained relay content {{event_id}} (part: {{part}})',
+  'Developer',
+  'Assistant',
+  'Tool',
 ] as const
