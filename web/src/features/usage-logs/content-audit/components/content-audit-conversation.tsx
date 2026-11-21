@@ -462,18 +462,19 @@ export function ContentAuditConversation(props: {
     let active = true
     setLoading(true)
     setError(false)
-    void Promise.all([
-      props.entry.has_request
-        ? getContentAuditContent(props.entry.event_id, 'request')
-        : Promise.resolve(undefined),
-      props.entry.has_response
-        ? getContentAuditContent(props.entry.event_id, 'response')
-        : Promise.resolve(undefined),
-      props.entry.has_websocket
-        ? getContentAuditContent(props.entry.event_id, 'websocket')
-        : Promise.resolve(undefined),
-    ])
-      .then(async ([requestBlob, responseBlob, websocketBlob]) => {
+    void (async () => {
+      try {
+        // Fetch sequentially: the production CDN rate-limits concurrent large
+        // audit downloads and may replace one response with an HTML challenge.
+        const requestBlob = props.entry.has_request
+          ? await getContentAuditContent(props.entry.event_id, 'request')
+          : undefined
+        const responseBlob = props.entry.has_response
+          ? await getContentAuditContent(props.entry.event_id, 'response')
+          : undefined
+        const websocketBlob = props.entry.has_websocket
+          ? await getContentAuditContent(props.entry.event_id, 'websocket')
+          : undefined
         if (!active) return
         const requestText = await blobText(
           requestBlob,
@@ -495,13 +496,12 @@ export function ContentAuditConversation(props: {
           websocketText,
           responseBlob,
         })
-      })
-      .catch(() => {
+      } catch {
         if (active) setError(true)
-      })
-      .finally(() => {
+      } finally {
         if (active) setLoading(false)
-      })
+      }
+    })()
     return () => {
       active = false
     }
