@@ -204,7 +204,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if err != nil {
 		return nil, fmt.Errorf("encode request for the free tier: %w", err)
 	}
-	return a.prepareChatRequest(info, body, request)
+	return a.prepareChatRequest(info, body, request, nil)
 }
 
 func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.ClaudeRequest) (any, error) {
@@ -239,19 +239,25 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 		return nil, fmt.Errorf("encode request for the free tier: %w", err)
 	}
 	a.responsesViaChat = true
-	return a.prepareChatRequest(info, body, chatRequest)
+	return a.prepareChatRequest(info, body, chatRequest, []byte(request.Tools))
 }
 
-func (a *Adaptor) prepareChatRequest(info *relaycommon.RelayInfo, body map[string]any, request *dto.GeneralOpenAIRequest) (any, error) {
+func (a *Adaptor) prepareChatRequest(info *relaycommon.RelayInfo, body map[string]any, request *dto.GeneralOpenAIRequest, responseTools []byte) (any, error) {
 	a.freeTierStream = true
 	a.clientStream = request.Stream != nil && *request.Stream
 	a.sessionSeed = conversationSessionSeed(info, body)
 	if a.textToolsEnabled {
-		protocol, err := prepareTextTools(body, request.Tools)
-		if err != nil {
-			return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest)
+		tools := request.Tools
+		if len(tools) == 0 {
+			tools = extractResponsesTextTools(responseTools)
 		}
-		a.textTools = protocol
+		if len(tools) > 0 {
+			protocol, err := prepareTextTools(body, tools)
+			if err != nil {
+				return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest)
+			}
+			a.textTools = protocol
+		}
 	}
 	body["stream"] = true
 	a.reverse = shapeRequest(body, "chat", upstreamModel(info, request.Model))

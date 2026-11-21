@@ -77,6 +77,74 @@ func prepareTextTools(body map[string]any, tools []dto.ToolCallRequest) (*textTo
 	return protocol, nil
 }
 
+func extractResponsesTextTools(raw []byte) []dto.ToolCallRequest {
+	if len(raw) == 0 {
+		return nil
+	}
+	var definitions []map[string]any
+	if err := common.Unmarshal(raw, &definitions); err != nil {
+		return nil
+	}
+
+	var tools []dto.ToolCallRequest
+	var visit func(map[string]any, string)
+	visit = func(definition map[string]any, namespace string) {
+		kind, _ := definition["type"].(string)
+		if kind == "namespace" {
+			nextNamespace, _ := definition["name"].(string)
+			if namespace != "" {
+				nextNamespace = namespace + "__" + nextNamespace
+			}
+			nested, _ := definition["tools"].([]any)
+			for _, rawTool := range nested {
+				tool, ok := rawTool.(map[string]any)
+				if ok {
+					visit(tool, nextNamespace)
+				}
+			}
+			return
+		}
+
+		function, _ := definition["function"].(map[string]any)
+		name, _ := definition["name"].(string)
+		description, _ := definition["description"].(string)
+		parameters := definition["parameters"]
+		if function != nil {
+			if name == "" {
+				name, _ = function["name"].(string)
+			}
+			if description == "" {
+				description, _ = function["description"].(string)
+			}
+			if parameters == nil {
+				parameters = function["parameters"]
+			}
+		}
+		if name == "" {
+			return
+		}
+		if namespace != "" {
+			name = namespace + "__" + name
+		}
+		encodedParameters, err := common.Marshal(parameters)
+		if err != nil || string(encodedParameters) == "null" || len(encodedParameters) == 0 {
+			encodedParameters = []byte(`{"type":"object","properties":{}}`)
+		}
+		tools = append(tools, dto.ToolCallRequest{
+			Type: "function",
+			Function: dto.FunctionRequest{
+				Name:        name,
+				Description: description,
+				Parameters:  encodedParameters,
+			},
+		})
+	}
+	for _, definition := range definitions {
+		visit(definition, "")
+	}
+	return tools
+}
+
 func appendTextToolPrompt(body map[string]any, prompt string) {
 	messages, _ := body["messages"].([]any)
 	for _, raw := range messages {
