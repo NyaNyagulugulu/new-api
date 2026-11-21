@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { AlertCircle, ChevronDown, Paperclip } from 'lucide-react'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -552,20 +552,4 @@ export function ContentAuditConversation(props: {
 async function blobText(blob: Blob | undefined, contentType: string) {
   if (!blob || !isPreviewableTextContentType(contentType)) return ''
   return blob.text()
-}
-
-export function ContentAuditConversationBadge(props: {
-  children?: ReactNode
-  className?: string
-}) {
-  return (
-    <span
-      className={cn(
-        'text-muted-foreground rounded-full border px-2 py-0.5 text-[11px]',
-        props.className
-      )}
-    >
-      {props.children}
-    </span>
-  )
 }

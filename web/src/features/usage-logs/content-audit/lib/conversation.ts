@@ -16,8 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { ContentAuditPart } from '../api'
-
 export type AuditConversationRole =
   | 'system'
   | 'developer'
@@ -1132,16 +1130,5 @@ export function buildContentAuditConversation(
     parseMode: requestText || responseText ? 'text' : 'binary',
     rawRequest: requestText || input.requestPreview,
     rawResponse: responseText || input.responsePreview,
-  }
-}
-
-export function contentAuditPartLabel(part: ContentAuditPart): string {
-  switch (part) {
-    case 'request':
-      return 'Request'
-    case 'response':
-      return 'Response'
-    case 'websocket':
-      return 'WebSocket'
   }
 }
