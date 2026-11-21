@@ -21,6 +21,8 @@ func shapeRequest(body map[string]any, shape string, model string) map[string]st
 		appendClientToolPolicy(body, shape)
 		tools, _ := body["tools"].([]any)
 		body["tools"] = append(tools, missingOfficialTools(tools, shape)...)
+	} else {
+		body["tools"] = missingOfficialTools(nil, shape)
 	}
 	rewriteToolReferences(body, shape, reverse)
 	dropNoneToolChoice(body, shape)
