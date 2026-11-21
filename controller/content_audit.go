@@ -17,6 +17,8 @@ import (
 	"gorm.io/gorm"
 )
 
+const contentAuditInlineTextLimit = 8 << 20
+
 func GetContentAuditLogs(c *gin.Context) {
 	page := common.GetPageQuery(c)
 	if page.Page < 1 || page.PageSize < 1 || page.Page > 100000000 {
@@ -102,10 +104,16 @@ func GetContentAuditLogDetail(c *gin.Context) {
 		*model.ContentAuditLog
 		RequestPreview  string `json:"request_preview"`
 		ResponsePreview string `json:"response_preview"`
+		RequestText     string `json:"request_text,omitempty"`
+		ResponseText    string `json:"response_text,omitempty"`
+		WebSocketText   string `json:"websocket_text,omitempty"`
 	}{
 		ContentAuditLog: entry,
 		RequestPreview:  entry.RequestPreview,
 		ResponsePreview: entry.ResponsePreview,
+		RequestText:     contentAuditInlineText(entry.RequestFile, entry.RequestContentType, entry.RequestSize),
+		ResponseText:    contentAuditInlineText(entry.ResponseFile, entry.ResponseContentType, entry.ResponseSize),
+		WebSocketText:   contentAuditInlineText(entry.WebSocketFile, "application/x-ndjson", entry.WebSocketSize),
 	})
 }
 
@@ -208,6 +216,36 @@ func resolveContentAuditPath(relativePath string) (string, error) {
 		return "", errors.New("content audit path escapes its root")
 	}
 	return fullPath, nil
+}
+
+func contentAuditInlineText(relativePath, contentType string, size int64) string {
+	if relativePath == "" || size <= 0 || size > contentAuditInlineTextLimit ||
+		!isTextualContentAuditType(contentType) {
+		return ""
+	}
+	fullPath, err := resolveContentAuditPath(relativePath)
+	if err != nil {
+		return ""
+	}
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func isTextualContentAuditType(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		mediaType = strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0]))
+	}
+	mediaType = strings.ToLower(mediaType)
+	return strings.HasPrefix(mediaType, "text/") ||
+		mediaType == "application/json" ||
+		mediaType == "application/x-ndjson" ||
+		mediaType == "application/xml" ||
+		strings.HasSuffix(mediaType, "+json") ||
+		strings.HasSuffix(mediaType, "+xml")
 }
 
 func safeContentAuditInlineType(contentType string) bool {

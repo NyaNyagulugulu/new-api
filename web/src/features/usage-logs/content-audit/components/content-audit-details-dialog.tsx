@@ -95,9 +95,20 @@ export function ContentAuditDetailsDialog(props: { entry: ContentAuditLog }) {
 
   const previewFor = (part: ContentAuditPart): string => {
     if (!detail.data) return ''
-    if (part === 'request') return detail.data.request_preview
-    if (part === 'response') return detail.data.response_preview
-    return ''
+    if (part === 'request') {
+      return detail.data.request_text ?? detail.data.request_preview
+    }
+    if (part === 'response') {
+      return detail.data.response_text ?? detail.data.response_preview
+    }
+    return detail.data.websocket_text ?? ''
+  }
+  const previewCompleteFor = (part: ContentAuditPart): boolean => {
+    if (!detail.data) return false
+    if (part === 'request') return detail.data.request_text !== undefined
+    if (part === 'response') return detail.data.response_text !== undefined
+    if (part === 'websocket') return detail.data.websocket_text !== undefined
+    return false
   }
   const contentTypeFor = (part: ContentAuditPart): string => {
     if (part === 'request') return entry.request_content_type
@@ -216,7 +227,10 @@ export function ContentAuditDetailsDialog(props: { entry: ContentAuditLog }) {
           <TabsContent value='conversation' className='min-h-0'>
             <ContentAuditConversation
               entry={entry}
-              enabled={open && activeTab === 'conversation'}
+              enabled={open && activeTab === 'conversation' && detail.isSuccess}
+              requestText={detail.data?.request_text}
+              responseText={detail.data?.response_text}
+              websocketText={detail.data?.websocket_text}
               requestPreview={previewFor('request')}
               responsePreview={previewFor('response')}
             />
@@ -227,6 +241,7 @@ export function ContentAuditDetailsDialog(props: { entry: ContentAuditLog }) {
                 entry={entry}
                 part={part}
                 preview={previewFor(part)}
+                previewComplete={previewCompleteFor(part)}
                 contentType={contentTypeFor(part)}
                 size={sizeFor(part)}
                 enabled={open && activeTab === part}
@@ -247,6 +262,7 @@ function ContentAuditPartPreview(props: {
   entry: ContentAuditLog
   part: ContentAuditPart
   preview: string
+  previewComplete: boolean
   contentType: string
   size: number
   enabled: boolean
@@ -256,17 +272,25 @@ function ContentAuditPartPreview(props: {
   const [downloading, setDownloading] = useState(false)
   const autoLoad =
     !props.preview &&
+    !props.previewComplete &&
     (isPreviewableImageContentType(props.contentType) ||
       isPreviewableAudioContentType(props.contentType))
   const payload = useQuery({
     queryKey: ['content-audit-content', props.entry.event_id, props.part],
     queryFn: () => getContentAuditContent(props.entry.event_id, props.part),
-    enabled: props.enabled && (loadFull || autoLoad),
+    enabled: props.enabled && !props.previewComplete && (loadFull || autoLoad),
     retry: false,
   })
   const handleDownload = async () => {
     setDownloading(true)
     try {
+      if (props.previewComplete && props.preview) {
+        downloadBlob(
+          new Blob([props.preview], { type: props.contentType }),
+          `${props.entry.event_id}-${props.part}.bin`
+        )
+        return
+      }
       const blob =
         payload.data ??
         (await getContentAuditContent(props.entry.event_id, props.part))
@@ -309,13 +333,13 @@ function ContentAuditPartPreview(props: {
         <span className='text-muted-foreground tabular-nums'>
           {formatContentAuditSize(props.size)}
         </span>
-        {props.preview && (
+        {props.preview && !props.previewComplete && (
           <span className='text-muted-foreground'>
             {t('Preview is limited to the first 8 KB')}
           </span>
         )}
         <span className='ml-auto flex gap-1'>
-          {!!props.preview && (
+          {!!props.preview && !props.previewComplete && (
             <Button
               type='button'
               variant='outline'

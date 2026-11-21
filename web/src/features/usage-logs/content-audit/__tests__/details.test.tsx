@@ -101,6 +101,25 @@ it('renders retained chat as a conversation without executing content', async ()
             ...entry,
             request_preview: 'retained request prompt',
             response_preview: 'retained response',
+            request_text: JSON.stringify({
+              model: 'gpt-audit',
+              messages: [
+                {
+                  role: 'user',
+                  content: '<script>retained request prompt</script>',
+                },
+              ],
+            }),
+            response_text: JSON.stringify({
+              choices: [
+                {
+                  message: {
+                    role: 'assistant',
+                    content: 'retained response',
+                  },
+                },
+              ],
+            }),
           },
         },
       } as never
@@ -152,6 +171,8 @@ it('renders retained chat as a conversation without executing content', async ()
   expect(within(dialog).getByText('User')).toBeVisible()
   expect(within(dialog).getByText('Assistant')).toBeVisible()
   expect(dialog.querySelector('script')).toBeNull()
+  await userEvent.click(within(dialog).getByRole('tab', { name: 'Request' }))
+  expect(api.get).toHaveBeenCalledTimes(1)
 })
 
 it('parses Responses SSE into readable reasoning, text, and tool calls', () => {

@@ -706,6 +706,9 @@ func TestContentAuditEndpointsRequirePermissionAndDoNotInlineActiveContent(t *te
 	fullPath := filepath.Join(dir, filepath.FromSlash(relativeFile))
 	require.NoError(t, os.MkdirAll(filepath.Dir(fullPath), 0o700))
 	require.NoError(t, os.WriteFile(fullPath, []byte(`<script>must-not-execute</script>`), 0o600))
+	requestFile := filepath.ToSlash(filepath.Join("2026", "01", "01", "content-event", "request.bin"))
+	requestBody := []byte(`{"messages":[{"role":"user","content":"retained request prompt"}]}`)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, filepath.FromSlash(requestFile)), requestBody, 0o600))
 	now := time.Now().Unix()
 	entry := &model.ContentAuditLog{
 		EventId:             "0123456789abcdef0123456789abcdef",
@@ -720,7 +723,9 @@ func TestContentAuditEndpointsRequirePermissionAndDoNotInlineActiveContent(t *te
 		StatusCode:          http.StatusOK,
 		Success:             true,
 		RequestPreview:      "retained request prompt",
-		RequestFile:         filepath.ToSlash(filepath.Join("2026", "01", "01", "content-event", "request.bin")),
+		RequestFile:         requestFile,
+		RequestContentType:  "application/json",
+		RequestSize:         int64(len(requestBody)),
 		ResponseFile:        relativeFile,
 		ResponseContentType: "text/html",
 	}
@@ -747,6 +752,7 @@ func TestContentAuditEndpointsRequirePermissionAndDoNotInlineActiveContent(t *te
 	response = auditRequest(router, "GET", "/api/content_audit/"+entry.EventId, pat)
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Contains(t, response.Body.String(), "retained request prompt")
+	assert.Contains(t, response.Body.String(), `"request_text"`)
 	assert.NotContains(t, response.Body.String(), relativeFile)
 
 	response = auditRequest(router, "GET", "/api/content_audit/"+entry.EventId+"/response?inline=1", pat)

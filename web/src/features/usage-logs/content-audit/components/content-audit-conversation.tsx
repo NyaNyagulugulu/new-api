@@ -449,6 +449,9 @@ function LoadedConversation(props: {
 export function ContentAuditConversation(props: {
   entry: ContentAuditLog
   enabled: boolean
+  requestText?: string
+  responseText?: string
+  websocketText?: string
   requestPreview: string
   responsePreview: string
 }) {
@@ -466,25 +469,28 @@ export function ContentAuditConversation(props: {
       try {
         // Fetch sequentially: the production CDN rate-limits concurrent large
         // audit downloads and may replace one response with an HTML challenge.
-        const requestBlob = props.entry.has_request
-          ? await getContentAuditContent(props.entry.event_id, 'request')
-          : undefined
-        const responseBlob = props.entry.has_response
-          ? await getContentAuditContent(props.entry.event_id, 'response')
-          : undefined
-        const websocketBlob = props.entry.has_websocket
-          ? await getContentAuditContent(props.entry.event_id, 'websocket')
-          : undefined
+        const requestBlob =
+          props.requestText === undefined && props.entry.has_request
+            ? await getContentAuditContent(props.entry.event_id, 'request')
+            : undefined
+        const responseBlob =
+          props.responseText === undefined && props.entry.has_response
+            ? await getContentAuditContent(props.entry.event_id, 'response')
+            : undefined
+        const websocketBlob =
+          props.websocketText === undefined && props.entry.has_websocket
+            ? await getContentAuditContent(props.entry.event_id, 'websocket')
+            : undefined
         if (!active) return
-        const requestText = await blobText(
-          requestBlob,
-          props.entry.request_content_type
-        )
-        const responseText = await blobText(
-          responseBlob,
-          props.entry.response_content_type
-        )
-        const websocketText = websocketBlob ? await websocketBlob.text() : ''
+        const requestText =
+          props.requestText ??
+          (await blobText(requestBlob, props.entry.request_content_type))
+        const responseText =
+          props.responseText ??
+          (await blobText(responseBlob, props.entry.response_content_type))
+        const websocketText =
+          props.websocketText ??
+          (websocketBlob ? await websocketBlob.text() : '')
         if (!active) return
         setBundle({
           requestText:
@@ -514,6 +520,9 @@ export function ContentAuditConversation(props: {
     props.entry.has_websocket,
     props.entry.request_content_type,
     props.entry.response_content_type,
+    props.requestText,
+    props.responseText,
+    props.websocketText,
     props.requestPreview,
     props.responsePreview,
   ])

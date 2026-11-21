@@ -61,6 +61,9 @@ export interface ContentAuditLog {
 export interface ContentAuditDetail extends ContentAuditLog {
   request_preview: string
   response_preview: string
+  request_text?: string
+  response_text?: string
+  websocket_text?: string
 }
 
 export interface ContentAuditFilters {
