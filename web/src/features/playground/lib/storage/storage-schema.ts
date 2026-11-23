@@ -39,6 +39,7 @@ export const playgroundConfigSchema = z.object({
   reasoningEffort: z
     .enum(['', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
     .optional(),
+  webSearch: z.boolean().optional(),
 })
 
 export const parameterEnabledSchema = z.object({

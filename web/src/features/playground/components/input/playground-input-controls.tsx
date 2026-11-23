@@ -34,6 +34,7 @@ import {
 import { getInputControlState } from '../../lib'
 import type { GroupOption, ModelOption, ReasoningEffort } from '../../types'
 import { PlaygroundReasoningSelector } from './playground-reasoning-selector'
+import { PlaygroundWebSearchToggle } from './playground-web-search-toggle'
 
 type PlaygroundInputControlsProps = {
   disabled?: boolean
@@ -48,6 +49,8 @@ type PlaygroundInputControlsProps = {
   onStop?: () => void
   onReasoningEffortChange: (value: ReasoningEffort) => void
   reasoningEffort: ReasoningEffort
+  webSearchEnabled: boolean
+  onWebSearchChange: (enabled: boolean) => void
   text: string
   tools: ReactNode
 }
@@ -65,6 +68,8 @@ export function PlaygroundInputControls({
   onStop,
   onReasoningEffortChange,
   reasoningEffort,
+  webSearchEnabled,
+  onWebSearchChange,
   text,
   tools,
 }: PlaygroundInputControlsProps) {
@@ -148,6 +153,11 @@ export function PlaygroundInputControls({
             disabled={disabled}
             onValueChange={onReasoningEffortChange}
             value={reasoningEffort}
+          />
+          <PlaygroundWebSearchToggle
+            disabled={disabled}
+            enabled={webSearchEnabled}
+            onEnabledChange={onWebSearchChange}
           />
           {tools}
         </div>

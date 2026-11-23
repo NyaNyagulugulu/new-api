@@ -76,5 +76,14 @@ export function buildChatCompletionPayload(
     payload.reasoning_effort = config.reasoningEffort
   }
 
+  if (config.webSearch) {
+    payload.tools = [
+      {
+        type: 'web_search_20250305',
+        name: 'web_search',
+      },
+    ]
+  }
+
   return payload
 }

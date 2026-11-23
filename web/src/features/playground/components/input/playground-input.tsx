@@ -166,6 +166,9 @@ export function PlaygroundInput({
             onGroupChange={onGroupChange}
             onModelChange={onModelChange}
             onReasoningEffortChange={onReasoningEffortChange}
+            onWebSearchChange={(enabled) =>
+              onConfigChange('webSearch', enabled)
+            }
             onStop={onStop}
             reasoningEffort={config.reasoningEffort}
             text={text}
@@ -178,6 +181,7 @@ export function PlaygroundInput({
                 parameterEnabled={parameterEnabled}
               />
             }
+            webSearchEnabled={config.webSearch}
           />
         </PromptInputFooter>
       </PromptInput>

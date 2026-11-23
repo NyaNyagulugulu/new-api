@@ -119,6 +119,7 @@ export interface ChatCompletionRequest {
   group?: string
   messages: ChatCompletionMessage[]
   stream: boolean
+  tools?: ChatCompletionTool[]
   reasoning_effort?: Exclude<ReasoningEffort, ''>
   stream_options?: {
     include_usage: boolean
@@ -129,6 +130,11 @@ export interface ChatCompletionRequest {
   frequency_penalty?: number
   presence_penalty?: number
   seed?: number
+}
+
+export interface ChatCompletionTool {
+  type: string
+  name?: string
 }
 
 export interface ChatCompletionChunk {
@@ -205,6 +211,7 @@ export interface PlaygroundConfig {
   seed: number | null
   stream: boolean
   reasoningEffort: ReasoningEffort
+  webSearch: boolean
 }
 
 export interface ParameterEnabled {
