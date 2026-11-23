@@ -65,7 +65,7 @@ const message: Message = {
 beforeAll(() => {
   i18next.addResourceBundle('en', 'translation', {
     'Cached tokens': 'Cached tokens',
-    'Estimated cost': 'Estimated cost',
+    Cost: 'Cost',
     'Input tokens': 'Input tokens',
     'Output tokens': 'Output tokens',
     'Reasoning effort': 'Reasoning effort',
@@ -89,5 +89,5 @@ test('shows input, output, total, cached, reasoning tokens and estimated cost', 
   expect(screen.getByText('Reasoning tokens:')).toBeInTheDocument()
   expect(screen.getByText('Reasoning effort:')).toBeInTheDocument()
   expect(screen.getByText('High')).toBeInTheDocument()
-  expect(screen.getByText('Estimated cost:')).toBeInTheDocument()
+  expect(screen.getByText('Cost:')).toBeInTheDocument()
 })

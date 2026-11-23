@@ -146,7 +146,7 @@ export function MessageMetadata(props: MessageMetadataProps) {
             ]
           : []),
         {
-          label: t('Estimated cost'),
+          label: t('Cost'),
           value:
             estimatedCostUSD == null
               ? t('Cost unavailable')
