@@ -19,24 +19,17 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 
-import {
-  createEmbeddings,
-  getMemorySettings,
-  saveUserMemories,
-  sendChatCompletion,
-} from '../api'
+import { getMemorySettings, saveUserMemories, sendChatCompletion } from '../api'
 import {
   buildMemoryExtractionMessages,
   extractExplicitMemoryInputs,
   getMemoryExtractionResponseContent,
   isMemoryExtractionMessage,
-  mergeChatCompletionUsage,
   normalizeMessageUsage,
   parseExtractedMemories,
 } from '../lib'
 import type {
   ChatSession,
-  ChatCompletionUsage,
   MemorySettings,
   MessageUsage,
   PlaygroundConfig,
@@ -142,44 +135,23 @@ export function useLongTermMemoryReflection({
               source_key: sourceKey,
             })
           )
-          let embeddingUsage: ChatCompletionUsage | undefined
           if (memories.length > 0) {
-            let embeddings: number[][] = []
-            if (settings.embedding_enabled && settings.embedding_model) {
-              try {
-                const embeddingResult = await createEmbeddings(
-                  memories.map((memory) => memory.content),
-                  settings.embedding_model,
-                  settings.embedding_group || config.group
-                )
-                embeddings = embeddingResult.embeddings
-                embeddingUsage = embeddingResult.usage
-              } catch {
-                embeddings = []
-              }
-            }
-            await saveUserMemories(
-              memories.map((memory, index) => ({
-                ...memory,
-                ...(embeddings[index]?.length
-                  ? { embedding: embeddings[index] }
-                  : {}),
-              }))
-            )
+            await saveUserMemories(memories, config.group)
           }
-          const usage = mergeChatCompletionUsage(response.usage, embeddingUsage)
-          if (usage) {
+          if (response.usage) {
             onUsage?.(
               session.id,
               lastMessage.key,
-              normalizeMessageUsage(usage, config.model, config.group)
+              normalizeMessageUsage(response.usage, config.model, config.group)
             )
           }
         })
         .catch(async () => {
           // Memory extraction is best-effort and must never interrupt chat.
           if (explicitMemories.length > 0) {
-            await saveUserMemories(explicitMemories).catch(() => undefined)
+            await saveUserMemories(explicitMemories, config.group).catch(
+              () => undefined
+            )
           }
         })
         .finally(() => {

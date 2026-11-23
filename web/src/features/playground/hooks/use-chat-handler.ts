@@ -21,12 +21,7 @@ import { useTranslation } from 'react-i18next'
 
 import { handleServerError } from '@/lib/handle-server-error'
 
-import {
-  createEmbeddings,
-  searchUserMemories,
-  searchWeb,
-  sendChatCompletion,
-} from '../api'
+import { searchUserMemories, searchWeb, sendChatCompletion } from '../api'
 import { ERROR_MESSAGES } from '../constants'
 import {
   addWebSearchContext,
@@ -656,25 +651,9 @@ export function useChatHandler({
           memorySettings.retrieve_limit > 0
         ) {
           try {
-            let queryEmbedding: number[] = []
-            if (
-              memorySettings.embedding_enabled &&
-              memorySettings.embedding_model
-            ) {
-              const embeddingResult = await createEmbeddings(
-                [query],
-                memorySettings.embedding_model,
-                memorySettings.embedding_group || config.group
-              )
-              queryEmbedding = embeddingResult.embeddings[0] ?? []
-              const embeddingCost = Number(embeddingResult.usage?.cost ?? 0)
-              if (Number.isFinite(embeddingCost) && embeddingCost > 0) {
-                request.auxiliaryCostUSD += embeddingCost
-              }
-            }
             memoryResults = await searchUserMemories(
               query,
-              queryEmbedding,
+              config.group,
               abortController.signal
             )
           } catch {

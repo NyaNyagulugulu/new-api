@@ -114,11 +114,14 @@ test('extracts and saves memories after the configured number of replies', async
   rerender({ sessions: [createSession('First answer', 'one')] })
 
   await waitFor(() => expect(apiMocks.saveUserMemories).toHaveBeenCalled())
-  expect(apiMocks.saveUserMemories).toHaveBeenCalledWith([
-    expect.objectContaining({
-      content: 'The user prefers concise answers.',
-      conversation_id: 'chat-1',
-      source_key: 'chat-1:one-assistant',
-    }),
-  ])
+  expect(apiMocks.saveUserMemories).toHaveBeenCalledWith(
+    [
+      expect.objectContaining({
+        content: 'The user prefers concise answers.',
+        conversation_id: 'chat-1',
+        source_key: 'chat-1:one-assistant',
+      }),
+    ],
+    'default'
+  )
 })

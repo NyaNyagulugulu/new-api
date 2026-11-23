@@ -2,9 +2,12 @@ package controller
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/memory_setting"
 
 	"github.com/gin-gonic/gin"
@@ -41,8 +44,8 @@ func GetUserMemories(c *gin.Context) {
 }
 
 type searchUserMemoriesRequest struct {
-	Query     string    `json:"query"`
-	Embedding []float64 `json:"embedding"`
+	Query string `json:"query"`
+	Group string `json:"group"`
 }
 
 func SearchUserMemories(c *gin.Context) {
@@ -56,14 +59,29 @@ func SearchUserMemories(c *gin.Context) {
 		common.ApiErrorMsg(c, "Invalid parameters")
 		return
 	}
-	if err := model.ValidateUserMemoryEmbedding(request.Embedding); err != nil {
-		common.ApiErrorMsg(c, "Invalid parameters")
-		return
-	}
 	settings := memory_setting.Get()
+	var embedding []float64
+	if settings.EmbeddingEnabled && settings.EmbeddingModel != "" && request.Query != "" {
+		group := strings.TrimSpace(settings.EmbeddingGroup)
+		if group == "" {
+			group = strings.TrimSpace(request.Group)
+		}
+		if group == "" {
+			group = common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+		}
+		vectors, err := service.EmbedMemoryTexts(
+			c,
+			settings.EmbeddingModel,
+			group,
+			[]string{request.Query},
+		)
+		if err == nil && len(vectors) > 0 {
+			embedding = vectors[0]
+		}
+	}
 	memories, err := model.SearchUserMemories(c.Request.Context(), userId, model.UserMemorySearchOptions{
 		Query:         request.Query,
-		Embedding:     request.Embedding,
+		Embedding:     embedding,
 		Limit:         settings.RetrieveLimit,
 		MinImportance: settings.MinImportance,
 		RetentionDays: settings.RetentionDays,
@@ -79,6 +97,7 @@ func SearchUserMemories(c *gin.Context) {
 
 type saveUserMemoriesRequest struct {
 	Memories []model.UserMemoryInput `json:"memories"`
+	Group    string                  `json:"group"`
 }
 
 func SaveUserMemories(c *gin.Context) {
@@ -91,6 +110,34 @@ func SaveUserMemories(c *gin.Context) {
 	if err := common.DecodeJson(c.Request.Body, &request); err != nil {
 		common.ApiErrorMsg(c, "Invalid parameters")
 		return
+	}
+	settings := memory_setting.Get()
+	if settings.EmbeddingEnabled && settings.EmbeddingModel != "" && len(request.Memories) > 0 {
+		group := strings.TrimSpace(settings.EmbeddingGroup)
+		if group == "" {
+			group = strings.TrimSpace(request.Group)
+		}
+		if group == "" {
+			group = common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+		}
+		texts := make([]string, 0, len(request.Memories))
+		indexes := make([]int, 0, len(request.Memories))
+		for i := range request.Memories {
+			if len(request.Memories[i].Embedding) == 0 {
+				texts = append(texts, request.Memories[i].Content)
+				indexes = append(indexes, i)
+			}
+		}
+		if len(texts) > 0 {
+			vectors, err := service.EmbedMemoryTexts(c, settings.EmbeddingModel, group, texts)
+			if err == nil {
+				for i, index := range indexes {
+					if i < len(vectors) {
+						request.Memories[index].Embedding = vectors[i]
+					}
+				}
+			}
+		}
 	}
 	if err := model.SaveUserMemories(c.Request.Context(), userId, request.Memories); err != nil {
 		common.ApiError(c, err)
