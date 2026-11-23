@@ -151,12 +151,7 @@ export function usePlaygroundState() {
     (updater: MessageStateUpdater, sessionId?: string) => {
       const currentSessionId = sessionId ?? activeSessionIdRef.current
       const targetSessionId = currentSessionId ?? nanoid()
-      const initialMessages =
-        currentSessionId && sessionId === undefined
-          ? null
-          : applyMessageStateUpdate([], updater)
 
-      if (initialMessages?.length === 0) return
       if (!currentSessionId) {
         setActiveSessionId(targetSessionId)
       }
@@ -167,7 +162,8 @@ export function usePlaygroundState() {
         )
 
         if (sessionIndex === -1) {
-          if (!initialMessages || initialMessages.length === 0) {
+          const initialMessages = applyMessageStateUpdate([], updater)
+          if (initialMessages.length === 0) {
             return previousSessions
           }
 
