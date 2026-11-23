@@ -63,17 +63,17 @@ export function SidebarModulesCard() {
     {
       key: 'chat',
       title: t('Chat Area'),
-      description: t('Playground and chat functions'),
+      description: t('Web chat and external chat apps'),
       modules: [
         {
           key: 'playground',
-          title: t('Playground'),
-          description: t('AI model testing environment'),
+          title: t('Web chat'),
+          description: t('Chat with any available model'),
         },
         {
           key: 'chat',
-          title: t('Chat'),
-          description: t('Chat session management'),
+          title: t('Chat apps'),
+          description: t('External chat app links'),
         },
       ],
     },

@@ -19,7 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 import { useAuthStore } from '@/stores/auth-store'
 
 import { MESSAGE_STATUS, STORAGE_KEYS } from '../../constants'
-import type { PlaygroundConfig, ParameterEnabled, Message } from '../../types'
+import type {
+  ChatSession,
+  PlaygroundConfig,
+  ParameterEnabled,
+  Message,
+} from '../../types'
+import { createChatSession } from '../chat/chat-sessions'
 import {
   finalizeMessage,
   isAssistantMessagePending,
@@ -30,9 +36,12 @@ import { hasMessageContent } from '../message/message-utils'
 import {
   MAX_LOADED_MESSAGE_CHARS,
   MAX_LOADED_MESSAGES_CHARS,
+  MAX_LOADED_SESSIONS_CHARS,
   MAX_STORED_MESSAGES,
   MAX_STORED_MESSAGES_BYTES,
+  MAX_STORED_SESSIONS,
   STORAGE_VERSION,
+  chatSessionsSchema,
   messagesSchema,
   parameterEnabledSchema,
   playgroundConfigSchema,
@@ -109,6 +118,10 @@ function trimMessages(messages: Message[]): Message[] {
   }
 
   return messages.slice(-MAX_STORED_MESSAGES)
+}
+
+function trimChatSessions(sessions: ChatSession[]): ChatSession[] {
+  return sessions.slice(0, MAX_STORED_SESSIONS)
 }
 
 function getMessageSize(message: Message): number {
@@ -292,6 +305,30 @@ function trimMessagesByContentSize(messages: Message[]): Message[] {
   return result.reverse()
 }
 
+function trimChatSessionsByContentSize(sessions: ChatSession[]): ChatSession[] {
+  let totalSize = 0
+  const result: ChatSession[] = []
+
+  for (const session of sessions) {
+    const sessionSize = session.messages.reduce(
+      (total, message) => total + getMessageSize(message),
+      0
+    )
+
+    if (
+      result.length > 0 &&
+      totalSize + sessionSize > MAX_LOADED_SESSIONS_CHARS
+    ) {
+      break
+    }
+
+    totalSize += sessionSize
+    result.push(session)
+  }
+
+  return result
+}
+
 /**
  * Load playground config from localStorage
  */
@@ -397,6 +434,80 @@ export function saveMessages(messages: Message[]): void {
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to save messages:', error)
+  }
+}
+
+/**
+ * Load persisted web chat sessions, migrating the previous single transcript
+ * into a session the first time the new storage is used.
+ */
+export function loadChatSessions(): ChatSession[] {
+  try {
+    const saved = readStoredValue(STORAGE_KEYS.SESSIONS)
+    if (saved) {
+      const parsed = chatSessionsSchema.parse(
+        unwrapStoredValue(saved)
+      ) as ChatSession[]
+      const normalized = parsed.map((session) => ({
+        ...session,
+        messages: sanitizeMessagesOnLoad(
+          trimMessagesByContentSize(
+            trimMessages(session.messages.map(normalizeStoredMessageForLoad))
+          )
+        ),
+      }))
+
+      return trimChatSessionsByContentSize(trimChatSessions(normalized))
+    }
+
+    const legacyMessages = loadMessages()
+    if (!legacyMessages?.length) {
+      return []
+    }
+
+    return [createChatSession(legacyMessages)]
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to load chat sessions:', error)
+  }
+
+  return []
+}
+
+/**
+ * Save web chat sessions to localStorage.
+ */
+export function saveChatSessions(sessions: ChatSession[]): void {
+  try {
+    const parsed = chatSessionsSchema.parse(
+      trimChatSessions(sessions)
+    ) as ChatSession[]
+    writeStoredValue(STORAGE_KEYS.SESSIONS, parsed)
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to save chat sessions:', error)
+  }
+}
+
+export function loadActiveChatSessionId(): string | null {
+  try {
+    const saved = readStoredValue(STORAGE_KEYS.ACTIVE_SESSION)
+    const value = unwrapStoredValue(saved)
+    return typeof value === 'string' ? value : null
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to load active chat session:', error)
+  }
+
+  return null
+}
+
+export function saveActiveChatSessionId(sessionId: string | null): void {
+  try {
+    writeStoredValue(STORAGE_KEYS.ACTIVE_SESSION, sessionId)
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to save active chat session:', error)
   }
 }
 

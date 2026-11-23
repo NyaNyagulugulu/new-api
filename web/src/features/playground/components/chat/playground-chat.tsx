@@ -44,8 +44,6 @@ import { PlaygroundMessageContent } from '../message/playground-message-content'
 import { PlaygroundMessageEditor } from '../message/playground-message-editor'
 import { PlaygroundEmptyState } from './playground-empty-state'
 
-const MAX_RENDERED_HISTORY_MESSAGES = 24
-
 interface PlaygroundChatProps {
   messages: MessageType[]
   onCopyMessage?: (message: MessageType) => void
@@ -83,11 +81,6 @@ export function PlaygroundChat({
   const [sourceMessageKeys, setSourceMessageKeys] = useState<
     ReadonlySet<string>
   >(() => new Set())
-  const visibleMessageOffset = Math.max(
-    0,
-    messages.length - MAX_RENDERED_HISTORY_MESSAGES
-  )
-  const visibleMessages = messages.slice(visibleMessageOffset)
 
   function handleToggleMessageSource(message: MessageType): void {
     setSourceMessageKeys((currentKeys) => {
@@ -112,8 +105,7 @@ export function PlaygroundChat({
     setOriginalText(content)
   }, [editingKey, messages])
 
-  let chatContent = visibleMessages.map((message, visibleMessageIndex) => {
-    const messageIndex = visibleMessageOffset + visibleMessageIndex
+  let chatContent = messages.map((message, messageIndex) => {
     const { alwaysShowActions, content, isEditing } = getChatMessageRenderState(
       messages,
       message,
@@ -193,7 +185,7 @@ export function PlaygroundChat({
     )
   })
 
-  if (visibleMessages.length === 0 && onSelectPrompt) {
+  if (messages.length === 0 && onSelectPrompt) {
     chatContent = [
       <PlaygroundEmptyState key='empty' onSelectPrompt={onSelectPrompt} />,
     ]
@@ -215,7 +207,7 @@ export function PlaygroundChat({
     <Conversation>
       {/* Remove outer padding; apply padding to inner centered container to align with input */}
       <ConversationContent className='p-0'>
-        <div className='mx-auto w-full max-w-4xl px-4 py-4'>{chatContent}</div>
+        <div className='mx-auto w-full max-w-3xl px-4 py-4'>{chatContent}</div>
       </ConversationContent>
       <ConversationScrollButton />
     </Conversation>

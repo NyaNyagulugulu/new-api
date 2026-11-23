@@ -1,0 +1,90 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { expect, test } from 'vitest'
+
+import type { ChatSession, Message } from '../../../types'
+import {
+  createChatSession,
+  getChatSessionTitle,
+  groupChatSessionsByDate,
+} from '../chat-sessions'
+
+const userMessage: Message = {
+  key: 'message-1',
+  from: 'user',
+  versions: [
+    {
+      id: 'version-1',
+      content: '  Explain   database indexes in a concise way  ',
+    },
+  ],
+}
+
+function createSession(id: string, updatedAt: number, title = ''): ChatSession {
+  return {
+    ...createChatSession([], updatedAt, id),
+    title,
+    messages: [userMessage],
+  }
+}
+
+test('a new chat uses its first user message as the generated title', () => {
+  const session = createChatSession([userMessage], 100, 'chat-1')
+
+  expect(getChatSessionTitle(session, 'New chat')).toBe(
+    'Explain database indexes in a concise way'
+  )
+})
+
+test('a renamed chat keeps its custom title', () => {
+  const session = { ...createSession('chat-1', 100), title: 'Database notes' }
+
+  expect(getChatSessionTitle(session, 'New chat')).toBe('Database notes')
+})
+
+test('sessions are grouped by recency with the newest group first', () => {
+  const now = new Date(2026, 10, 23, 12).getTime()
+  const today = new Date(2026, 10, 23, 9).getTime()
+  const yesterday = new Date(2026, 10, 22, 9).getTime()
+  const lastWeek = new Date(2026, 10, 19, 9).getTime()
+  const older = new Date(2026, 9, 1, 9).getTime()
+
+  const groups = groupChatSessionsByDate(
+    [
+      createSession('older', older),
+      createSession('today', today),
+      createSession('last-week', lastWeek),
+      createSession('yesterday', yesterday),
+    ],
+    now
+  )
+
+  expect(groups.map((group) => group.key)).toEqual([
+    'today',
+    'yesterday',
+    'last7Days',
+    'older',
+  ])
+  expect(groups.map((group) => group.sessions[0].id)).toEqual([
+    'today',
+    'yesterday',
+    'last-week',
+    'older',
+  ])
+})

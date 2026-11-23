@@ -21,6 +21,8 @@ import { z } from 'zod'
 export const STORAGE_VERSION = 1
 export const MAX_STORED_MESSAGES = 100
 export const MAX_STORED_MESSAGES_BYTES = 1024 * 1024
+export const MAX_STORED_SESSIONS = 50
+export const MAX_LOADED_SESSIONS_CHARS = 180_000
 export const MAX_LOADED_MESSAGES_CHARS = 120_000
 export const MAX_LOADED_MESSAGE_CHARS = 40_000
 
@@ -89,3 +91,13 @@ const messageSchema = z.object({
 })
 
 export const messagesSchema = z.array(messageSchema)
+
+export const chatSessionSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().max(200),
+  messages: messagesSchema,
+  createdAt: z.number(),
+  updatedAt: z.number(),
+})
+
+export const chatSessionsSchema = z.array(chatSessionSchema)

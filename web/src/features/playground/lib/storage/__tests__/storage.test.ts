@@ -21,12 +21,16 @@ import { afterEach, beforeEach, expect, test } from 'vitest'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { STORAGE_KEYS } from '../../../constants'
-import type { Message } from '../../../types'
+import type { ChatSession, Message } from '../../../types'
 import {
   clearPlaygroundData,
+  loadActiveChatSessionId,
+  loadChatSessions,
   loadConfig,
   loadMessages,
   loadParameterEnabled,
+  saveActiveChatSessionId,
+  saveChatSessions,
   saveConfig,
   saveMessages,
   saveParameterEnabled,
@@ -40,6 +44,16 @@ const messages: Message[] = [
   },
 ]
 
+const sessions: ChatSession[] = [
+  {
+    id: 'session-a',
+    title: 'Account A chat',
+    messages,
+    createdAt: 100,
+    updatedAt: 200,
+  },
+]
+
 beforeEach(() => {
   localStorage.clear()
   useAuthStore.getState().auth.reset()
@@ -50,32 +64,49 @@ afterEach(() => {
   useAuthStore.getState().auth.reset()
 })
 
-test('switching accounts isolates config, messages and parameter toggles and preserves returning account data', () => {
+test('switching accounts isolates config, chats and parameter toggles and preserves returning account data', () => {
   useAuthStore.getState().auth.setUser({ id: 1, username: 'A', role: 1 })
   saveConfig({ model: 'account-a-model' })
-  saveMessages(messages)
+  saveChatSessions(sessions)
+  saveActiveChatSessionId('session-a')
   saveParameterEnabled({ temperature: true })
 
   useAuthStore.getState().auth.reset()
   useAuthStore.getState().auth.setUser({ id: 2, username: 'B', role: 1 })
   expect(loadConfig()).toEqual({})
+  expect(loadChatSessions()).toEqual([])
   expect(loadMessages()).toBeNull()
   expect(loadParameterEnabled()).toEqual({})
   saveConfig({ model: 'account-b-model' })
-  saveMessages([])
+  saveChatSessions([])
+  saveActiveChatSessionId(null)
   saveParameterEnabled({ temperature: false })
 
   useAuthStore.getState().auth.setUser({ id: 1, username: 'A', role: 1 })
   expect(loadConfig()).toEqual({ model: 'account-a-model' })
-  expect(loadMessages()).toEqual(messages)
+  expect(loadChatSessions()).toEqual(sessions)
+  expect(loadActiveChatSessionId()).toBe('session-a')
   expect(loadParameterEnabled()).toEqual({ temperature: true })
 
   clearPlaygroundData()
-  expect(loadMessages()).toBeNull()
+  expect(loadChatSessions()).toEqual([])
+  expect(loadActiveChatSessionId()).toBeNull()
   useAuthStore.getState().auth.setUser({ id: 2, username: 'B', role: 1 })
   expect(loadConfig()).toEqual({ model: 'account-b-model' })
-  expect(loadMessages()).toEqual([])
+  expect(loadChatSessions()).toEqual([])
   expect(loadParameterEnabled()).toEqual({ temperature: false })
+})
+
+test('legacy transcript is migrated into the first web chat session', () => {
+  useAuthStore.getState().auth.setUser({ id: 1, username: 'A', role: 1 })
+  saveMessages(messages)
+
+  expect(loadChatSessions()).toMatchObject([
+    {
+      title: '',
+      messages,
+    },
+  ])
 })
 
 test('legacy global data is removed instead of assigned to the first signed-in account', () => {

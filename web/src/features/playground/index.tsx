@@ -16,7 +16,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { PanelLeftIcon, SquarePenIcon } from 'lucide-react'
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
+import { Button } from '@/components/ui/button'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+
 import { PlaygroundChat } from './components/chat/playground-chat'
+import { PlaygroundHistorySidebar } from './components/history/playground-history-sidebar'
 import { PlaygroundInput } from './components/input/playground-input'
 import {
   useChatHandler,
@@ -24,12 +38,17 @@ import {
   usePlaygroundOptions,
   usePlaygroundState,
 } from './hooks'
+import { getChatSessionTitle } from './lib'
 
 export function Playground() {
+  const { t } = useTranslation()
+  const [historyOpen, setHistoryOpen] = useState(false)
   const {
     config,
     parameterEnabled,
     messages,
+    activeSession,
+    sessions,
     isLoadingMessages,
     models,
     groups,
@@ -38,7 +57,10 @@ export function Playground() {
     setGroups,
     updateConfig,
     updateParameterEnabled,
-    clearMessages,
+    createNewChat,
+    selectChat,
+    renameChat,
+    deleteChat,
   } = usePlaygroundState()
 
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
@@ -61,11 +83,6 @@ export function Playground() {
     sendChat,
   })
 
-  const handleClearMessages = () => {
-    handleEditOpenChange(false)
-    clearMessages()
-  }
-
   const { isLoadingModels } = usePlaygroundOptions({
     currentGroup: config.group,
     currentModel: config.model,
@@ -74,47 +91,124 @@ export function Playground() {
     updateConfig,
   })
 
-  return (
-    <div className='relative flex size-full min-h-0 flex-col overflow-hidden'>
-      {/* Full-width scroll container: scrolling works even over side whitespace */}
-      <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
-        <PlaygroundChat
-          messages={messages}
-          isLoadingMessages={isLoadingMessages}
-          onRegenerateMessage={handleRegenerateMessage}
-          onEditMessage={handleEditMessage}
-          onDeleteMessage={handleDeleteMessage}
-          onSelectPrompt={handleSendMessage}
-          isGenerating={isGenerating}
-          editingKey={editingMessageKey}
-          onCancelEdit={handleEditOpenChange}
-          onSaveEdit={(newContent) => applyEdit(newContent, false)}
-          onSaveEditAndSubmit={(newContent) => applyEdit(newContent, true)}
-        />
-      </div>
+  const closeEditorAndRun = (action: () => void) => {
+    handleEditOpenChange(false)
+    action()
+    setHistoryOpen(false)
+  }
 
-      {/* Input area: center content and constrain to the same container width */}
-      <div className='mx-auto w-full max-w-4xl'>
-        <PlaygroundInput
-          config={config}
-          disabled={isGenerating}
-          groups={groups}
-          groupValue={config.group}
-          isGenerating={isGenerating}
-          isModelLoading={isLoadingModels}
-          modelValue={config.model}
-          models={models}
-          onGroupChange={(value) => updateConfig('group', value)}
-          onConfigChange={updateConfig}
-          onClearMessages={handleClearMessages}
-          onModelChange={(value) => updateConfig('model', value)}
-          onParameterEnabledChange={updateParameterEnabled}
-          onStop={stopGeneration}
-          onSubmit={handleSendMessage}
-          parameterEnabled={parameterEnabled}
-          hasMessages={messages.length > 0}
-        />
-      </div>
+  const handleNewChat = () => {
+    closeEditorAndRun(createNewChat)
+  }
+
+  const handleSelectChat = (sessionId: string) => {
+    closeEditorAndRun(() => selectChat(sessionId))
+  }
+
+  const chatTitle = activeSession
+    ? getChatSessionTitle(activeSession, t('New chat'))
+    : t('New chat')
+
+  const historySidebar = (className: string) => (
+    <PlaygroundHistorySidebar
+      activeSessionId={activeSession?.id ?? null}
+      className={className}
+      disabled={isGenerating}
+      onDeleteChat={(sessionId) => {
+        closeEditorAndRun(() => deleteChat(sessionId))
+      }}
+      onNewChat={handleNewChat}
+      onRenameChat={renameChat}
+      onSelectChat={handleSelectChat}
+      sessions={sessions}
+    />
+  )
+
+  return (
+    <div className='bg-background flex size-full min-h-0 overflow-hidden'>
+      {historySidebar('hidden lg:flex')}
+
+      <Sheet onOpenChange={setHistoryOpen} open={historyOpen}>
+        <SheetContent className='w-[19rem] max-w-[85vw] p-0' side='left'>
+          <SheetHeader className='border-b px-4 py-3 pr-12'>
+            <SheetTitle>{t('Chat history')}</SheetTitle>
+            <SheetDescription className='sr-only'>
+              {t('Chat history')}
+            </SheetDescription>
+          </SheetHeader>
+          {historySidebar('flex w-full border-r-0')}
+        </SheetContent>
+      </Sheet>
+
+      <section className='flex min-h-0 min-w-0 flex-1 flex-col'>
+        <header className='flex h-12 shrink-0 items-center gap-2 border-b px-2.5'>
+          <Button
+            aria-label={t('Open chat history')}
+            className='lg:hidden'
+            onClick={() => setHistoryOpen(true)}
+            size='icon-sm'
+            type='button'
+            variant='ghost'
+          >
+            <PanelLeftIcon />
+          </Button>
+
+          <h1 className='min-w-0 flex-1 truncate px-1 text-sm font-medium'>
+            {chatTitle}
+          </h1>
+
+          <Button
+            aria-label={t('New chat')}
+            className='lg:hidden'
+            disabled={isGenerating}
+            onClick={handleNewChat}
+            size='icon-sm'
+            type='button'
+            variant='ghost'
+          >
+            <SquarePenIcon />
+          </Button>
+        </header>
+
+        <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
+          <PlaygroundChat
+            editingKey={editingMessageKey}
+            isGenerating={isGenerating}
+            isLoadingMessages={isLoadingMessages}
+            messages={messages}
+            onCancelEdit={handleEditOpenChange}
+            onDeleteMessage={handleDeleteMessage}
+            onEditMessage={handleEditMessage}
+            onRegenerateMessage={handleRegenerateMessage}
+            onSaveEdit={(newContent) => applyEdit(newContent, false)}
+            onSaveEditAndSubmit={(newContent) => applyEdit(newContent, true)}
+            onSelectPrompt={handleSendMessage}
+          />
+        </div>
+
+        <div className='mx-auto w-full max-w-3xl px-2 pb-2 sm:px-4'>
+          <PlaygroundInput
+            config={config}
+            disabled={isGenerating}
+            groupValue={config.group}
+            groups={groups}
+            isGenerating={isGenerating}
+            isModelLoading={isLoadingModels}
+            modelValue={config.model}
+            models={models}
+            onConfigChange={updateConfig}
+            onGroupChange={(value) => updateConfig('group', value)}
+            onModelChange={(value) => updateConfig('model', value)}
+            onParameterEnabledChange={updateParameterEnabled}
+            onStop={stopGeneration}
+            onSubmit={handleSendMessage}
+            parameterEnabled={parameterEnabled}
+          />
+          <p className='text-muted-foreground pb-1 text-center text-[11px] leading-4'>
+            {t('AI can make mistakes. Check important information.')}
+          </p>
+        </div>
+      </section>
     </div>
   )
 }
