@@ -77,5 +77,9 @@ export function buildChatCompletionPayload(
     payload.reasoning_effort = config.reasoningEffort
   }
 
+  if (config.webSearch) {
+    payload.web_search = true
+  }
+
   return payload
 }

@@ -121,6 +121,7 @@ export interface ChatCompletionRequest {
   group?: string
   messages: ChatCompletionMessage[]
   stream: boolean
+  web_search?: boolean
   reasoning_effort?: Exclude<ReasoningEffort, ''>
   stream_options?: {
     include_usage: boolean
@@ -131,12 +132,6 @@ export interface ChatCompletionRequest {
   frequency_penalty?: number
   presence_penalty?: number
   seed?: number
-}
-
-export interface WebSearchResult {
-  title: string
-  url: string
-  snippet?: string
 }
 
 export interface MemorySettings {

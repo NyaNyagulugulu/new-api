@@ -46,7 +46,6 @@ export const API_ENDPOINTS = {
   MEMORY_SETTINGS: '/api/user/self/memory_settings',
   MEMORIES: '/api/user/self/memories',
   MEMORY_SEARCH: '/api/user/self/memories/search',
-  WEB_SEARCH: '/pg/tools/search',
 } as const
 
 // Default group — uses 'default' as the safe fallback; auto-group is

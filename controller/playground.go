@@ -1,8 +1,10 @@
 package controller
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -18,6 +20,9 @@ import (
 )
 
 func Playground(c *gin.Context) {
+	if err := enrichPlaygroundWebSearch(c); err != nil {
+		common.SysError(common.LogText("web search enrichment failed: %s", err.Error()))
+	}
 	playgroundRelay(c, types.RelayFormatOpenAI)
 }
 
@@ -87,6 +92,103 @@ func PlaygroundToolsSearch(c *gin.Context) {
 	_ = middleware.SetupContextForToken(c, tempToken)
 
 	Relay(c, types.RelayFormatDeepSeekTools)
+}
+
+func enrichPlaygroundWebSearch(c *gin.Context) error {
+	storage, err := common.GetBodyStorage(c)
+	if err != nil {
+		return err
+	}
+	rawBody, err := storage.Bytes()
+	if err != nil {
+		return err
+	}
+
+	var request map[string]any
+	if err := common.Unmarshal(rawBody, &request); err != nil {
+		return err
+	}
+	enabled, _ := request["web_search"].(bool)
+	if !enabled {
+		return nil
+	}
+	delete(request, "web_search")
+
+	query := playgroundSearchQuery(request)
+	contextBlock := ""
+	if query != "" {
+		group, _ := request["group"].(string)
+		contextBlock, err = service.SearchWebForChat(c, group, query)
+		if err != nil {
+			common.SysError(common.LogText("web search failed: %s", err.Error()))
+		}
+	}
+	if contextBlock != "" {
+		injectPlaygroundSearchContext(request, contextBlock)
+	}
+	return replacePlaygroundRequestBody(c, storage, request)
+}
+
+func playgroundSearchQuery(request map[string]any) string {
+	messages, _ := request["messages"].([]any)
+	for index := len(messages) - 1; index >= 0; index-- {
+		message, _ := messages[index].(map[string]any)
+		if role, _ := message["role"].(string); role != "user" {
+			continue
+		}
+		switch content := message["content"].(type) {
+		case string:
+			return strings.TrimSpace(content)
+		case []any:
+			for _, part := range content {
+				partMap, _ := part.(map[string]any)
+				if text, _ := partMap["text"].(string); strings.TrimSpace(text) != "" {
+					return strings.TrimSpace(text)
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func injectPlaygroundSearchContext(request map[string]any, contextBlock string) {
+	messages, _ := request["messages"].([]any)
+	for index := len(messages) - 1; index >= 0; index-- {
+		message, _ := messages[index].(map[string]any)
+		if role, _ := message["role"].(string); role != "user" {
+			continue
+		}
+		switch content := message["content"].(type) {
+		case string:
+			message["content"] = content + "\n\n---\n" + contextBlock
+		case []any:
+			message["content"] = append(content, map[string]any{
+				"type": "text",
+				"text": contextBlock,
+			})
+		}
+		return
+	}
+}
+
+func replacePlaygroundRequestBody(
+	c *gin.Context,
+	oldStorage common.BodyStorage,
+	request map[string]any,
+) error {
+	encoded, err := common.Marshal(request)
+	if err != nil {
+		return err
+	}
+	storage, err := common.CreateBodyStorage(encoded)
+	if err != nil {
+		return err
+	}
+	_ = oldStorage.Close()
+	c.Set(common.KeyBodyStorage, storage)
+	c.Request.Body = io.NopCloser(bytes.NewReader(encoded))
+	c.Request.ContentLength = int64(len(encoded))
+	return nil
 }
 
 func playgroundRelay(c *gin.Context, relayFormat types.RelayFormat) {

@@ -25,6 +25,7 @@ import type {
   UserMemoryInput,
 } from '../../types'
 import { isAssistantMessagePending } from '../message/message-streaming-utils'
+import { getMessageContent } from '../message/message-utils'
 
 const MAX_MEMORY_CONTENT = 4_000
 const MAX_EXTRACTED_MEMORIES = 10
@@ -93,6 +94,15 @@ export function addLongTermMemoryContext(
         : message
     ),
   }
+}
+
+export function getUserMemoryQuery(messages: Message[]): string {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    if (messages[index].from === MESSAGE_ROLES.USER) {
+      return getMessageContent(messages[index]).trim().slice(0, 2_000)
+    }
+  }
+  return ''
 }
 
 export function buildMemoryExtractionMessages(

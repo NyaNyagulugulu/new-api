@@ -52,6 +52,17 @@ test('omits reasoning effort when automatic selection is active', () => {
   expect(payload).not.toHaveProperty('reasoning_effort')
 })
 
+test('delegates web search execution to the backend', () => {
+  const payload = buildChatCompletionPayload(
+    messages,
+    { ...DEFAULT_CONFIG, webSearch: true },
+    DEFAULT_PARAMETER_ENABLED
+  )
+
+  expect(payload.web_search).toBe(true)
+  expect(payload).not.toHaveProperty('tools')
+})
+
 test('sends only the latest context summary and newer messages', () => {
   const summary = createContextSummaryMessage('Earlier conversation summary', 2)
   const payload = buildChatCompletionPayload(

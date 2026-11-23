@@ -38,7 +38,6 @@ const apiMocks = vi.hoisted(() => ({
   createEmbeddings: vi.fn(),
   deleteChatConversation: vi.fn(),
   getChatConversations: vi.fn(),
-  searchWeb: vi.fn(),
   searchUserMemories: vi.fn(),
   sendChatCompletion: vi.fn(),
   syncChatConversations: vi.fn(),
@@ -48,7 +47,6 @@ vi.mock('../../api', () => ({
   createEmbeddings: apiMocks.createEmbeddings,
   deleteChatConversation: apiMocks.deleteChatConversation,
   getChatConversations: apiMocks.getChatConversations,
-  searchWeb: apiMocks.searchWeb,
   searchUserMemories: apiMocks.searchUserMemories,
   sendChatCompletion: apiMocks.sendChatCompletion,
   syncChatConversations: apiMocks.syncChatConversations,
@@ -70,7 +68,6 @@ beforeEach(() => {
   localStorage.clear()
   apiMocks.getChatConversations.mockResolvedValue([])
   apiMocks.createEmbeddings.mockResolvedValue([[1, 0, 0]])
-  apiMocks.searchWeb.mockResolvedValue([])
   apiMocks.searchUserMemories.mockResolvedValue([])
   apiMocks.syncChatConversations.mockResolvedValue([])
   apiMocks.deleteChatConversation.mockResolvedValue(undefined)
@@ -158,14 +155,7 @@ test('final streamed chunks are committed when completion arrives immediately', 
   expect(assistantMessage?.usage?.totalTokens).toBe(5)
 })
 
-test('web search keeps the normal reasoning stream and attaches sources', async () => {
-  apiMocks.searchWeb.mockResolvedValue([
-    {
-      title: 'Go Downloads',
-      url: 'https://go.dev/dl/',
-      snippet: 'Download Go.',
-    },
-  ])
+test('web search is delegated to the backend and keeps the reasoning stream', async () => {
   const { result } = renderHook(() => usePlaygroundHarness())
   await waitFor(() => expect(result.current.isLoadingMessages).toBe(false))
   act(() => result.current.updateConfig('webSearch', true))
@@ -191,13 +181,7 @@ test('web search keeps the normal reasoning stream and attaches sources', async 
     (error: string, errorCode?: string) => void,
   ]
 
-  expect(apiMocks.searchWeb).toHaveBeenCalledWith(
-    'What is the latest Go release?',
-    result.current.config.group,
-    expect.any(AbortSignal)
-  )
-  expect(JSON.stringify(payload.messages)).toContain('https://go.dev/dl/')
-  expect(payload).not.toHaveProperty('tools')
+  expect(payload.web_search).toBe(true)
 
   act(() => {
     onUpdate('reasoning', 'Checking the official download page.')
@@ -210,9 +194,6 @@ test('web search keeps the normal reasoning stream and attaches sources', async 
     'Checking the official download page.'
   )
   expect(assistantMessage?.versions[0]?.content).toBe('Go 1.25 is available.')
-  expect(assistantMessage?.sources).toEqual([
-    { href: 'https://go.dev/dl/', title: 'Go Downloads' },
-  ])
 })
 
 test('automatically summarizes older context before starting the answer', async () => {
