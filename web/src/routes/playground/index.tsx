@@ -20,20 +20,27 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { Main } from '@/components/layout'
 import { Playground } from '@/features/playground'
+import { PlaygroundGuest } from '@/features/playground/components/guest/playground-guest'
 import { isSidebarModuleEnabled } from '@/lib/nav-modules'
+import { useAuthStore } from '@/stores/auth-store'
 
-export const Route = createFileRoute('/_authenticated/playground/')({
+export const Route = createFileRoute('/playground/')({
   beforeLoad: () => {
     if (!isSidebarModuleEnabled('chat', 'playground')) {
-      throw redirect({ to: '/dashboard' })
+      throw redirect({ to: '/' })
     }
   },
   component: PlaygroundPage,
 })
 
 function PlaygroundPage() {
+  const signedIn = useAuthStore((state) => Boolean(state.auth.user))
+  if (!signedIn) {
+    return <PlaygroundGuest />
+  }
+
   return (
-    <Main className='p-0'>
+    <Main className='h-svh p-0'>
       <Playground />
     </Main>
   )

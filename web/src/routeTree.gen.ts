@@ -31,6 +31,7 @@ import { Route as AuthenticatedSystemSettingsRouteRouteImport } from './routes/_
 import { Route as AboutIndexRouteImport } from './routes/about/index'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
 import { Route as OauthProviderRouteImport } from './routes/oauth/$provider'
+import { Route as PlaygroundIndexRouteImport } from './routes/playground/index'
 import { Route as PricingIndexRouteImport } from './routes/pricing/index'
 import { Route as RankingsIndexRouteImport } from './routes/rankings/index'
 import { Route as SetupIndexRouteImport } from './routes/setup/index'
@@ -43,7 +44,6 @@ import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenti
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
-import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
 import { Route as AuthenticatedSecurityIndexRouteImport } from './routes/_authenticated/security/index'
@@ -184,6 +184,11 @@ const OauthProviderRoute = OauthProviderRouteImport.update({
   path: '/oauth/$provider',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PlaygroundIndexRoute = PlaygroundIndexRouteImport.update({
+  id: '/playground/',
+  path: '/playground/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PricingIndexRoute = PricingIndexRouteImport.update({
   id: '/pricing/',
   path: '/pricing/',
@@ -248,12 +253,6 @@ const AuthenticatedModelsSectionRoute =
   AuthenticatedModelsSectionRouteImport.update({
     id: '/models/$section',
     path: '/models/$section',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedPlaygroundIndexRoute =
-  AuthenticatedPlaygroundIndexRouteImport.update({
-    id: '/playground/',
-    path: '/playground/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedProfileIndexRoute =
@@ -456,6 +455,7 @@ export interface FileRoutesByFullPath {
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
   '/docs/': typeof DocsIndexRoute
+  '/playground/': typeof PlaygroundIndexRoute
   '/pricing/': typeof PricingIndexRoute
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
@@ -471,7 +471,6 @@ export interface FileRoutesByFullPath {
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
-  '/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/security/': typeof AuthenticatedSecurityIndexRoute
@@ -520,6 +519,7 @@ export interface FileRoutesByTo {
   '/oauth/$provider': typeof OauthProviderRoute
   '/about': typeof AboutIndexRoute
   '/docs': typeof DocsIndexRoute
+  '/playground': typeof PlaygroundIndexRoute
   '/pricing': typeof PricingIndexRoute
   '/rankings': typeof RankingsIndexRoute
   '/setup': typeof SetupIndexRoute
@@ -535,7 +535,6 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
-  '/playground': typeof AuthenticatedPlaygroundIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
   '/security': typeof AuthenticatedSecurityIndexRoute
@@ -588,6 +587,7 @@ export interface FileRoutesById {
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
   '/docs/': typeof DocsIndexRoute
+  '/playground/': typeof PlaygroundIndexRoute
   '/pricing/': typeof PricingIndexRoute
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
@@ -603,7 +603,6 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
-  '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/_authenticated/security/': typeof AuthenticatedSecurityIndexRoute
@@ -655,6 +654,7 @@ export interface FileRouteTypes {
     | '/oauth/$provider'
     | '/about/'
     | '/docs/'
+    | '/playground/'
     | '/pricing/'
     | '/rankings/'
     | '/setup/'
@@ -670,7 +670,6 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/keys/'
     | '/models/'
-    | '/playground/'
     | '/profile/'
     | '/redemption-codes/'
     | '/security/'
@@ -719,6 +718,7 @@ export interface FileRouteTypes {
     | '/oauth/$provider'
     | '/about'
     | '/docs'
+    | '/playground'
     | '/pricing'
     | '/rankings'
     | '/setup'
@@ -734,7 +734,6 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/keys'
     | '/models'
-    | '/playground'
     | '/profile'
     | '/redemption-codes'
     | '/security'
@@ -786,6 +785,7 @@ export interface FileRouteTypes {
     | '/oauth/$provider'
     | '/about/'
     | '/docs/'
+    | '/playground/'
     | '/pricing/'
     | '/rankings/'
     | '/setup/'
@@ -801,7 +801,6 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/'
     | '/_authenticated/keys/'
     | '/_authenticated/models/'
-    | '/_authenticated/playground/'
     | '/_authenticated/profile/'
     | '/_authenticated/redemption-codes/'
     | '/_authenticated/security/'
@@ -845,6 +844,7 @@ export interface RootRouteChildren {
   OauthProviderRoute: typeof OauthProviderRoute
   AboutIndexRoute: typeof AboutIndexRoute
   DocsIndexRoute: typeof DocsIndexRoute
+  PlaygroundIndexRoute: typeof PlaygroundIndexRoute
   PricingIndexRoute: typeof PricingIndexRoute
   RankingsIndexRoute: typeof RankingsIndexRoute
   SetupIndexRoute: typeof SetupIndexRoute
@@ -1007,6 +1007,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OauthProviderRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/playground/': {
+      id: '/playground/'
+      path: '/playground'
+      fullPath: '/playground/'
+      preLoaderRoute: typeof PlaygroundIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pricing/': {
       id: '/pricing/'
       path: '/pricing'
@@ -1089,13 +1096,6 @@ declare module '@tanstack/react-router' {
       path: '/models/$section'
       fullPath: '/models/$section'
       preLoaderRoute: typeof AuthenticatedModelsSectionRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/playground/': {
-      id: '/_authenticated/playground/'
-      path: '/playground'
-      fullPath: '/playground/'
-      preLoaderRoute: typeof AuthenticatedPlaygroundIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/profile/': {
@@ -1414,7 +1414,6 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
-  AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
   AuthenticatedSecurityIndexRoute: typeof AuthenticatedSecurityIndexRoute
@@ -1442,7 +1441,6 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
-  AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,
   AuthenticatedProfileIndexRoute: AuthenticatedProfileIndexRoute,
   AuthenticatedRedemptionCodesIndexRoute:
     AuthenticatedRedemptionCodesIndexRoute,
@@ -1472,6 +1470,7 @@ const rootRouteChildren: RootRouteChildren = {
   OauthProviderRoute: OauthProviderRoute,
   AboutIndexRoute: AboutIndexRoute,
   DocsIndexRoute: DocsIndexRoute,
+  PlaygroundIndexRoute: PlaygroundIndexRoute,
   PricingIndexRoute: PricingIndexRoute,
   RankingsIndexRoute: RankingsIndexRoute,
   SetupIndexRoute: SetupIndexRoute,

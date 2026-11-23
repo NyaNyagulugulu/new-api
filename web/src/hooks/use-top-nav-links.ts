@@ -20,7 +20,10 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
-import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
+import {
+  isSidebarModuleEnabled,
+  parseHeaderNavModulesFromStatus,
+} from '@/lib/nav-modules'
 import { useAuthStore } from '@/stores/auth-store'
 
 export type TopNavLink = {
@@ -65,6 +68,10 @@ export function useTopNavLinks(): TopNavLink[] {
   // Home
   if (modules?.home !== false) {
     links.push({ title: t('Home'), href: '/' })
+  }
+
+  if (isSidebarModuleEnabled('chat', 'playground')) {
+    links.push({ title: t('Web chat'), href: '/playground' })
   }
 
   // Console -> /dashboard (new console path)

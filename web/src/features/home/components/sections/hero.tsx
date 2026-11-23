@@ -24,7 +24,8 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { useStatus } from '@/hooks/use-status'
 
-import { HeroTerminalDemo } from '../hero-terminal-demo'
+import { RotatingModelIcon } from '../rotating-model-icon'
+import { WebChatPreview } from '../webchat-preview'
 
 interface HeroProps {
   className?: string
@@ -81,6 +82,37 @@ export function Hero(props: HeroProps) {
     )
   }
 
+  let secondaryAction = (
+    <Button
+      className='h-11 rounded-lg px-5 text-sm font-medium'
+      render={<Link search={{ redirect: '/playground' }} to='/sign-in' />}
+      variant='outline'
+    >
+      {t('Sign In')}
+    </Button>
+  )
+  if (props.isAuthenticated) {
+    secondaryAction = (
+      <Button
+        className='h-11 rounded-lg px-5 text-sm font-medium'
+        render={<Link to='/dashboard' />}
+        variant='outline'
+      >
+        {t('Go to Dashboard')}
+      </Button>
+    )
+  } else if (localRegistrationEnabled) {
+    secondaryAction = (
+      <Button
+        className='h-11 rounded-lg px-5 text-sm font-medium'
+        render={<Link to='/sign-up' />}
+        variant='outline'
+      >
+        {t('Get Started')}
+      </Button>
+    )
+  }
+
   return (
     <section className='relative z-10 overflow-hidden px-6 pt-24 pb-16 md:pt-32 md:pb-24 lg:pt-36 lg:pb-28'>
       {/* Radial gradient background */}
@@ -120,10 +152,10 @@ export function Hero(props: HeroProps) {
             className='landing-animate-fade-up text-[clamp(2.25rem,4.5vw,3.25rem)] leading-[1.15] font-bold tracking-tight'
             style={{ animationDelay: '60ms' }}
           >
-            {t('Unified API Gateway for')}
+            {t('One workspace for')}
             <br />
             <span className='bg-gradient-to-r from-blue-400 via-violet-400 to-purple-500 bg-clip-text text-transparent'>
-              {t('Vast Range of AI Models')}
+              {t('Chat with every model')}
             </span>
           </h1>
           <p
@@ -131,7 +163,7 @@ export function Hero(props: HeroProps) {
             style={{ animationDelay: '120ms' }}
           >
             {t(
-              'Access a vast selection of models via a standard, unified API protocol. Power AI applications, manage digital assets, and connect the Future.'
+              'Chat in your browser, attach images and files, choose reasoning effort, and see token usage and cost after every reply.'
             )}
           </p>
 
@@ -139,46 +171,16 @@ export function Hero(props: HeroProps) {
             className='landing-animate-fade-up mt-8 flex flex-wrap items-center gap-3 opacity-0'
             style={{ animationDelay: '180ms' }}
           >
-            {props.isAuthenticated ? (
-              <>
-                <Button
-                  className='group h-11 rounded-lg px-5 text-sm font-medium'
-                  render={<Link to='/dashboard' />}
-                >
-                  {t('Go to Dashboard')}
-                  <ArrowRight className='ml-1.5 size-4 transition-transform duration-200 group-hover:translate-x-0.5' />
-                </Button>
-                {renderDocsButton()}
-              </>
-            ) : (
-              <>
-                {localRegistrationEnabled ? (
-                  <Button
-                    className='group h-11 rounded-lg px-5 text-sm font-medium'
-                    render={<Link to='/sign-up' />}
-                  >
-                    {t('Get Started')}
-                    <ArrowRight className='ml-1.5 size-4 transition-transform duration-200 group-hover:translate-x-0.5' />
-                  </Button>
-                ) : (
-                  <Button
-                    className='group h-11 rounded-lg px-5 text-sm font-medium'
-                    render={<Link to='/sign-in' />}
-                  >
-                    {t('Sign In')}
-                    <ArrowRight className='ml-1.5 size-4 transition-transform duration-200 group-hover:translate-x-0.5' />
-                  </Button>
-                )}
-                <Button
-                  variant='outline'
-                  className='border-border/50 hover:border-border hover:bg-muted/50 h-11 rounded-lg px-5 text-sm font-medium'
-                  render={<Link to='/pricing' />}
-                >
-                  {t('View Pricing')}
-                </Button>
-                {renderDocsButton()}
-              </>
-            )}
+            <Button
+              className='group h-11 rounded-lg bg-zinc-950 px-5 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200'
+              render={<Link to='/playground' />}
+            >
+              <RotatingModelIcon />
+              {t('Start chat')}
+              <ArrowRight className='ml-1.5 size-4 transition-transform duration-200 group-hover:translate-x-0.5' />
+            </Button>
+            {secondaryAction}
+            {renderDocsButton()}
           </div>
 
           {/* Supported Apps (参考图二样式，进行卡片化和信息扩充设计，增加视觉高度) */}
@@ -249,7 +251,7 @@ export function Hero(props: HeroProps) {
           className='landing-animate-fade-up flex w-full justify-center opacity-0 lg:col-span-6'
           style={{ animationDelay: '320ms' }}
         >
-          <HeroTerminalDemo className='mt-8 lg:mt-0' />
+          <WebChatPreview className='mt-8 lg:mt-0' />
         </div>
       </div>
     </section>

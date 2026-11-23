@@ -24,6 +24,8 @@ import { AnimateInView } from '@/components/animate-in-view'
 import { Button } from '@/components/ui/button'
 import { useStatus } from '@/hooks/use-status'
 
+import { RotatingModelIcon } from '../rotating-model-icon'
+
 interface CTAProps {
   className?: string
   isAuthenticated?: boolean
@@ -72,21 +74,32 @@ export function CTA(props: CTAProps) {
         </p>
         <div className='mt-8 flex items-center justify-center gap-3'>
           <Button
-            className='group rounded-lg'
-            render={
-              <Link to={localRegistrationEnabled ? '/sign-up' : '/sign-in'} />
-            }
+            className='group rounded-lg bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200'
+            render={<Link to='/playground' />}
           >
-            {t(localRegistrationEnabled ? 'Get Started' : 'Sign In')}
+            <RotatingModelIcon />
+            {t('Start chat')}
             <ArrowRight className='ml-1 size-3.5 transition-transform duration-200 group-hover:translate-x-0.5' />
           </Button>
-          <Button
-            variant='outline'
-            className='border-border/50 hover:border-border hover:bg-muted/50 rounded-lg'
-            render={<Link to='/pricing' />}
-          >
-            {t('View Pricing')}
-          </Button>
+          {localRegistrationEnabled ? (
+            <Button
+              variant='outline'
+              className='border-border/50 hover:border-border hover:bg-muted/50 rounded-lg'
+              render={<Link to='/sign-up' />}
+            >
+              {t('Get Started')}
+            </Button>
+          ) : (
+            <Button
+              variant='outline'
+              className='border-border/50 hover:border-border hover:bg-muted/50 rounded-lg'
+              render={
+                <Link search={{ redirect: '/playground' }} to='/sign-in' />
+              }
+            >
+              {t('Sign In')}
+            </Button>
+          )}
         </div>
       </AnimateInView>
     </section>
