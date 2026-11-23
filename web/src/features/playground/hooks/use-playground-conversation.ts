@@ -29,14 +29,17 @@ import type { Message, MessageAttachment } from '../types'
 type UsePlaygroundConversationOptions = {
   messages: Message[]
   updateMessages: (
-    updater: Message[] | ((prev: Message[]) => Message[])
+    updater: Message[] | ((prev: Message[]) => Message[]),
+    sessionId?: string
   ) => void
-  sendChat: (messages: Message[]) => void
+  ensureActiveSessionId: () => string
+  sendChat: (messages: Message[], sessionId?: string) => void
 }
 
 export function usePlaygroundConversation({
   messages,
   updateMessages,
+  ensureActiveSessionId,
   sendChat,
 }: UsePlaygroundConversationOptions) {
   const [editingMessageKey, setEditingMessageKey] = useState<string | null>(
@@ -45,11 +48,12 @@ export function usePlaygroundConversation({
 
   const handleSendMessage = useCallback(
     (text: string, attachments: MessageAttachment[] = []) => {
+      const sessionId = ensureActiveSessionId()
       const nextMessages = appendUserMessagePair(messages, text, attachments)
-      updateMessages(nextMessages)
-      sendChat(nextMessages)
+      updateMessages(nextMessages, sessionId)
+      sendChat(nextMessages, sessionId)
     },
-    [messages, updateMessages, sendChat]
+    [ensureActiveSessionId, messages, updateMessages, sendChat]
   )
 
   const handleRegenerateMessage = useCallback(
@@ -57,10 +61,11 @@ export function usePlaygroundConversation({
       const nextMessages = createRegeneratedMessages(messages, message.key)
       if (!nextMessages) return
 
-      updateMessages(nextMessages)
-      sendChat(nextMessages)
+      const sessionId = ensureActiveSessionId()
+      updateMessages(nextMessages, sessionId)
+      sendChat(nextMessages, sessionId)
     },
-    [messages, updateMessages, sendChat]
+    [ensureActiveSessionId, messages, updateMessages, sendChat]
   )
 
   const handleEditMessage = useCallback((message: Message) => {
@@ -89,10 +94,16 @@ export function usePlaygroundConversation({
       updateMessages(editResult.messages)
 
       if (editResult.shouldSend) {
-        sendChat(editResult.messages)
+        sendChat(editResult.messages, ensureActiveSessionId())
       }
     },
-    [editingMessageKey, messages, updateMessages, sendChat]
+    [
+      editingMessageKey,
+      ensureActiveSessionId,
+      messages,
+      updateMessages,
+      sendChat,
+    ]
   )
 
   const handleDeleteMessage = useCallback(

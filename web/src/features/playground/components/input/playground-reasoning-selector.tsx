@@ -19,15 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 import { BrainIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { PromptInputButton } from '@/components/ai-elements/prompt-input'
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import { Slider } from '@/components/ui/slider'
 
 import { REASONING_EFFORT_OPTIONS } from '../../constants'
 import type { ReasoningEffort } from '../../types'
@@ -42,43 +40,65 @@ export function PlaygroundReasoningSelector(
   props: PlaygroundReasoningSelectorProps
 ) {
   const { t } = useTranslation()
+  const selectedIndex = Math.max(
+    0,
+    REASONING_EFFORT_OPTIONS.findIndex((option) => option.value === props.value)
+  )
   const selectedOption =
-    REASONING_EFFORT_OPTIONS.find((option) => option.value === props.value) ??
-    REASONING_EFFORT_OPTIONS[0]
+    REASONING_EFFORT_OPTIONS[selectedIndex] ?? REASONING_EFFORT_OPTIONS[0]
+  const lastIndex = REASONING_EFFORT_OPTIONS.length - 1
 
   return (
-    <Select
-      disabled={props.disabled}
-      onValueChange={(value) => {
-        if (value === null || value === 'auto') {
-          props.onValueChange('')
-          return
+    <Popover>
+      <PopoverTrigger
+        render={
+          <PromptInputButton
+            aria-label={t('Reasoning effort')}
+            className='text-muted-foreground hover:text-foreground hover:bg-muted/70 gap-1.5 px-2 font-medium'
+            disabled={props.disabled}
+            variant='ghost'
+          />
         }
-        props.onValueChange(value as ReasoningEffort)
-      }}
-      value={props.value || 'auto'}
-    >
-      <SelectTrigger
-        aria-label={t('Reasoning effort')}
-        className='bg-background/80 h-8 max-w-32 rounded-lg px-2 text-xs'
-        size='sm'
       >
-        <BrainIcon className='text-muted-foreground' />
-        <SelectValue>{t(selectedOption.labelKey)}</SelectValue>
-      </SelectTrigger>
-      <SelectContent align='start' side='top' sideOffset={6}>
-        <SelectGroup>
-          <SelectLabel>{t('Reasoning effort')}</SelectLabel>
-          {REASONING_EFFORT_OPTIONS.map((option) => (
-            <SelectItem
-              key={option.value || 'auto'}
-              value={option.value || 'auto'}
-            >
-              {t(option.labelKey)}
-            </SelectItem>
-          ))}
-        </SelectGroup>
-      </SelectContent>
-    </Select>
+        <BrainIcon size={16} />
+        <span className='max-w-16 truncate text-xs'>
+          {t(selectedOption.labelKey)}
+        </span>
+      </PopoverTrigger>
+      <PopoverContent
+        align='start'
+        className='w-80 max-w-[calc(100vw-2rem)] gap-3 p-3'
+        side='top'
+        sideOffset={8}
+      >
+        <div className='flex items-center justify-between gap-3 px-1'>
+          <span className='text-sm font-semibold'>{t('Reasoning effort')}</span>
+          <span className='text-muted-foreground text-xs'>
+            {t(selectedOption.labelKey)}
+          </span>
+        </div>
+        <div className='px-1.5 pt-1'>
+          <Slider
+            aria-label={t('Reasoning effort')}
+            disabled={props.disabled}
+            max={lastIndex}
+            min={0}
+            onValueChange={(nextValue) => {
+              const index = Array.isArray(nextValue) ? nextValue[0] : nextValue
+              const option = REASONING_EFFORT_OPTIONS[index]
+              if (option) {
+                props.onValueChange(option.value)
+              }
+            }}
+            step={1}
+            value={[selectedIndex]}
+          />
+          <div className='text-muted-foreground mt-2 flex justify-between text-[10px]'>
+            <span>{t(REASONING_EFFORT_OPTIONS[0].labelKey)}</span>
+            <span>{t(REASONING_EFFORT_OPTIONS[lastIndex].labelKey)}</span>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }

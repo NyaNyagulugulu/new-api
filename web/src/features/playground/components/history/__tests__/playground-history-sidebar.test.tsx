@@ -59,6 +59,7 @@ beforeAll(() => {
     'Chat title': 'Chat title',
     Delete: 'Delete',
     'Delete chat?': 'Delete chat?',
+    Generating: 'Generating',
     'New chat': 'New chat',
     'No chats found': 'No chats found',
     'No chats yet': 'No chats yet',
@@ -70,25 +71,36 @@ beforeAll(() => {
     'Search chats': 'Search chats',
     Today: 'Today',
     'Try a different search term.': 'Try a different search term.',
+    Unread: 'Unread',
     Yesterday: 'Yesterday',
   })
 })
 
 function renderSidebar(
   overrides: {
+    disabled?: boolean
+    generatingSessionId?: string
     onNewChat?: () => void
     onSelectChat?: (sessionId: string) => void
     onRenameChat?: (sessionId: string, title: string) => void
+    unreadSessionIds?: ReadonlySet<string>
   } = {}
 ) {
   return render(
     <PlaygroundHistorySidebar
       activeSessionId='chat-1'
+      disabled={overrides.disabled}
+      generatingSessionIds={
+        overrides.generatingSessionId
+          ? new Set([overrides.generatingSessionId])
+          : undefined
+      }
       onDeleteChat={() => undefined}
       onNewChat={overrides.onNewChat ?? (() => undefined)}
       onRenameChat={overrides.onRenameChat ?? (() => undefined)}
       onSelectChat={overrides.onSelectChat ?? (() => undefined)}
       sessions={sessions}
+      unreadSessionIds={overrides.unreadSessionIds}
     />
   )
 }
@@ -133,4 +145,45 @@ test('renaming a conversation saves the new title', async () => {
   await user.click(screen.getByRole('button', { name: 'Save' }))
 
   expect(onRenameChat).toHaveBeenCalledWith('chat-1', 'Index notes')
+})
+
+test('keeps conversation navigation enabled while generation actions are locked', () => {
+  renderSidebar({ disabled: true })
+
+  expect(screen.getByRole('button', { name: 'New chat' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: 'Travel plan' })).toBeEnabled()
+  expect(
+    screen.getByRole('button', { name: 'Chat options: Database indexes' })
+  ).toBeDisabled()
+})
+
+test('shows a spinner for a running conversation and a dot for an unread one', () => {
+  const { rerender } = render(
+    <PlaygroundHistorySidebar
+      activeSessionId='chat-1'
+      generatingSessionIds={new Set(['chat-1'])}
+      onDeleteChat={() => undefined}
+      onNewChat={() => undefined}
+      onRenameChat={() => undefined}
+      onSelectChat={() => undefined}
+      sessions={sessions}
+      unreadSessionIds={new Set()}
+    />
+  )
+
+  expect(screen.getByLabelText('Generating')).toBeInTheDocument()
+
+  rerender(
+    <PlaygroundHistorySidebar
+      activeSessionId='chat-1'
+      onDeleteChat={() => undefined}
+      onNewChat={() => undefined}
+      onRenameChat={() => undefined}
+      onSelectChat={() => undefined}
+      sessions={sessions}
+      unreadSessionIds={new Set(['chat-2'])}
+    />
+  )
+
+  expect(screen.getByLabelText('Unread')).toBeInTheDocument()
 })

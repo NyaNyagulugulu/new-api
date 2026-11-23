@@ -1,3 +1,5 @@
+import { useLocation } from '@tanstack/react-router'
+
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -35,6 +37,9 @@ type AuthenticatedLayoutProps = {
 
 export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
   const defaultOpen = getCookie('sidebar_state') !== 'false'
+  const pathname = useLocation({ select: (location) => location.pathname })
+  const isWebChat =
+    pathname === '/playground' || pathname.startsWith('/playground/')
   const signedIn = useAuthStore((s) => !!s.auth.user)
   // Unmount pages on sign-out, otherwise their queries refetch and toast "Session expired!" / "invalid access token"
   if (!signedIn) return null
@@ -44,9 +49,9 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
       <SearchProvider>
         <SidebarProvider defaultOpen={defaultOpen} className='flex-col'>
           <SkipToMain />
-          <AppHeader />
+          <AppHeader showSidebarTrigger={!isWebChat} />
           <div className='flex min-h-0 w-full flex-1'>
-            <AppSidebar />
+            {!isWebChat && <AppSidebar />}
             <SidebarInset
               className={cn(
                 '@container/content',

@@ -29,7 +29,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { useSidebar } from '@/components/ui/sidebar'
 
 import { PlaygroundChat } from './components/chat/playground-chat'
 import { PlaygroundHistorySidebar } from './components/history/playground-history-sidebar'
@@ -40,25 +39,28 @@ import {
   usePlaygroundOptions,
   usePlaygroundState,
 } from './hooks'
-import { getChatSessionTitle } from './lib'
+import {
+  createCompletionSoundPlayer,
+  getChatSessionTitle,
+  type CompletionSoundPlayer,
+} from './lib'
+import type { Message, MessageAttachment } from './types'
 
 export function Playground() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const router = useRouter()
   const [historyOpen, setHistoryOpen] = useState(false)
-  const { open: sidebarOpen, setOpen, setOpenMobile } = useSidebar()
-  const initialSidebarOpenRef = useRef(sidebarOpen)
+  const [unreadSessionIds, setUnreadSessionIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  )
+  const completionSoundRef = useRef<CompletionSoundPlayer | null>(null)
+  const previousGeneratingSessionIdsRef = useRef<ReadonlySet<string>>(new Set())
+  const suppressedCompletionSessionsRef = useRef<ReadonlySet<string>>(new Set())
 
-  useEffect(() => {
-    const shouldRestore = initialSidebarOpenRef.current
-    setOpen(false)
-    setOpenMobile(false)
-
-    return () => {
-      if (shouldRestore) setOpen(true)
-    }
-  }, [setOpen, setOpenMobile])
+  if (!completionSoundRef.current) {
+    completionSoundRef.current = createCompletionSoundPlayer()
+  }
 
   const {
     config,
@@ -70,6 +72,7 @@ export function Playground() {
     models,
     groups,
     updateMessages,
+    ensureActiveSessionId,
     setModels,
     setGroups,
     updateConfig,
@@ -80,7 +83,7 @@ export function Playground() {
     deleteChat,
   } = usePlaygroundState()
 
-  const { sendChat, stopGeneration, isGenerating } = useChatHandler({
+  const { sendChat, stopGeneration, generatingSessionIds } = useChatHandler({
     config,
     parameterEnabled,
     onMessageUpdate: updateMessages,
@@ -97,6 +100,7 @@ export function Playground() {
   } = usePlaygroundConversation({
     messages,
     updateMessages,
+    ensureActiveSessionId,
     sendChat,
   })
 
@@ -107,6 +111,46 @@ export function Playground() {
     setModels,
     updateConfig,
   })
+
+  useEffect(
+    () => () => {
+      completionSoundRef.current?.dispose()
+    },
+    []
+  )
+
+  useEffect(() => {
+    const previous = previousGeneratingSessionIdsRef.current
+    previousGeneratingSessionIdsRef.current = generatingSessionIds
+    const completedSessionIds = [...previous].filter(
+      (sessionId) => !generatingSessionIds.has(sessionId)
+    )
+    if (completedSessionIds.length === 0) return
+
+    const suppressed = suppressedCompletionSessionsRef.current
+    if (suppressed.size > 0) {
+      const nextSuppressed = new Set(suppressed)
+      for (const sessionId of completedSessionIds) {
+        nextSuppressed.delete(sessionId)
+      }
+      suppressedCompletionSessionsRef.current = nextSuppressed
+    }
+
+    const notifySessionIds = completedSessionIds.filter(
+      (sessionId) =>
+        sessionId !== activeSession?.id && !suppressed.has(sessionId)
+    )
+    if (notifySessionIds.length === 0) return
+
+    setUnreadSessionIds((current) => {
+      const next = new Set(current)
+      for (const sessionId of notifySessionIds) {
+        next.add(sessionId)
+      }
+      return next
+    })
+    completionSoundRef.current?.play()
+  }, [activeSession?.id, generatingSessionIds])
 
   const closeEditorAndRun = (action: () => void) => {
     handleEditOpenChange(false)
@@ -119,12 +163,43 @@ export function Playground() {
   }
 
   const handleSelectChat = (sessionId: string) => {
+    setUnreadSessionIds((current) => {
+      if (!current.has(sessionId)) return current
+      const next = new Set(current)
+      next.delete(sessionId)
+      return next
+    })
     closeEditorAndRun(() => selectChat(sessionId))
+  }
+
+  const handleSendWithSound = (
+    text: string,
+    attachments?: MessageAttachment[]
+  ) => {
+    completionSoundRef.current?.unlock()
+    handleSendMessage(text, attachments)
+  }
+
+  const handleRegenerateWithSound = (message: Message) => {
+    completionSoundRef.current?.unlock()
+    handleRegenerateMessage(message)
+  }
+
+  const handleStopGeneration = () => {
+    const sessionId = activeSession?.id
+    if (!sessionId) return
+    suppressedCompletionSessionsRef.current = new Set(
+      suppressedCompletionSessionsRef.current
+    ).add(sessionId)
+    stopGeneration(sessionId)
   }
 
   const chatTitle = activeSession
     ? getChatSessionTitle(activeSession, t('New chat'))
     : t('New chat')
+  const isCurrentSessionGenerating = Boolean(
+    activeSession?.id && generatingSessionIds.has(activeSession.id)
+  )
 
   const handleBack = () => {
     if (router.history.canGoBack()) {
@@ -139,14 +214,21 @@ export function Playground() {
     <PlaygroundHistorySidebar
       activeSessionId={activeSession?.id ?? null}
       className={className}
-      disabled={isGenerating}
+      generatingSessionIds={generatingSessionIds}
       onDeleteChat={(sessionId) => {
+        if (generatingSessionIds.has(sessionId)) {
+          suppressedCompletionSessionsRef.current = new Set(
+            suppressedCompletionSessionsRef.current
+          ).add(sessionId)
+          stopGeneration(sessionId)
+        }
         closeEditorAndRun(() => deleteChat(sessionId))
       }}
       onNewChat={handleNewChat}
       onRenameChat={renameChat}
       onSelectChat={handleSelectChat}
       sessions={sessions}
+      unreadSessionIds={unreadSessionIds}
     />
   )
 
@@ -196,7 +278,6 @@ export function Playground() {
           <Button
             aria-label={t('New chat')}
             className='lg:hidden'
-            disabled={isGenerating}
             onClick={handleNewChat}
             size='icon-sm'
             type='button'
@@ -209,26 +290,29 @@ export function Playground() {
         <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
           <PlaygroundChat
             editingKey={editingMessageKey}
-            isGenerating={isGenerating}
+            isGenerating={isCurrentSessionGenerating}
             isLoadingMessages={isLoadingMessages}
             messages={messages}
             onCancelEdit={handleEditOpenChange}
             onDeleteMessage={handleDeleteMessage}
             onEditMessage={handleEditMessage}
-            onRegenerateMessage={handleRegenerateMessage}
+            onRegenerateMessage={handleRegenerateWithSound}
             onSaveEdit={(newContent) => applyEdit(newContent, false)}
-            onSaveEditAndSubmit={(newContent) => applyEdit(newContent, true)}
-            onSelectPrompt={handleSendMessage}
+            onSaveEditAndSubmit={(newContent) => {
+              completionSoundRef.current?.unlock()
+              applyEdit(newContent, true)
+            }}
+            onSelectPrompt={handleSendWithSound}
           />
         </div>
 
         <div className='mx-auto w-full max-w-3xl px-2 pb-2 sm:px-4'>
           <PlaygroundInput
             config={config}
-            disabled={isGenerating}
+            disabled={isCurrentSessionGenerating}
             groupValue={config.group}
             groups={groups}
-            isGenerating={isGenerating}
+            isGenerating={isCurrentSessionGenerating}
             isModelLoading={isLoadingModels}
             modelValue={config.model}
             models={models}
@@ -239,8 +323,8 @@ export function Playground() {
             onReasoningEffortChange={(value) =>
               updateConfig('reasoningEffort', value)
             }
-            onStop={stopGeneration}
-            onSubmit={handleSendMessage}
+            onStop={handleStopGeneration}
+            onSubmit={handleSendWithSound}
             parameterEnabled={parameterEnabled}
           />
           <p className='text-muted-foreground pb-1 text-center text-[11px] leading-4'>

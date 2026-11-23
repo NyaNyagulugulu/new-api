@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   MessageSquarePlusIcon,
   MoreHorizontalIcon,
+  Loader2Icon,
   PencilIcon,
   SearchIcon,
   SquarePenIcon,
@@ -52,6 +53,8 @@ type PlaygroundHistorySidebarProps = {
   sessions: ChatSession[]
   activeSessionId: string | null
   disabled?: boolean
+  generatingSessionIds?: ReadonlySet<string>
+  unreadSessionIds?: ReadonlySet<string>
   className?: string
   onNewChat: () => void
   onSelectChat: (sessionId: string) => void
@@ -124,7 +127,6 @@ export function PlaygroundHistorySidebar(props: PlaygroundHistorySidebarProps) {
       <div className='grid gap-2 p-3'>
         <Button
           className='h-9 justify-start rounded-xl px-3 shadow-xs'
-          disabled={props.disabled}
           onClick={props.onNewChat}
           type='button'
           variant='outline'
@@ -167,6 +169,10 @@ export function PlaygroundHistorySidebar(props: PlaygroundHistorySidebarProps) {
                 </h2>
                 {group.sessions.map((session) => {
                   const isActive = session.id === props.activeSessionId
+                  const isGenerating = props.generatingSessionIds?.has(
+                    session.id
+                  )
+                  const isUnread = props.unreadSessionIds?.has(session.id)
                   const title = getChatSessionTitle(session, fallbackTitle)
 
                   return (
@@ -174,11 +180,10 @@ export function PlaygroundHistorySidebar(props: PlaygroundHistorySidebarProps) {
                       <Button
                         aria-current={isActive ? 'page' : undefined}
                         className={cn(
-                          'h-9 w-full justify-start rounded-lg px-2.5 pr-9 text-left text-sm font-normal',
+                          'h-9 w-full justify-start rounded-lg px-2.5 pr-14 text-left text-sm font-normal',
                           isActive &&
                             'bg-sidebar-accent text-sidebar-accent-foreground hover:bg-sidebar-accent'
                         )}
-                        disabled={props.disabled}
                         onClick={() => props.onSelectChat(session.id)}
                         type='button'
                         variant='ghost'
@@ -186,13 +191,27 @@ export function PlaygroundHistorySidebar(props: PlaygroundHistorySidebarProps) {
                         <span className='truncate'>{title}</span>
                       </Button>
 
+                      {isGenerating ? (
+                        <Loader2Icon
+                          aria-label={t('Generating')}
+                          className='text-muted-foreground absolute top-1/2 right-8 size-3.5 -translate-y-1/2 animate-spin'
+                        />
+                      ) : (
+                        isUnread && (
+                          <span
+                            aria-label={t('Unread')}
+                            className='bg-primary absolute top-1/2 right-8 size-2 -translate-y-1/2 rounded-full'
+                          />
+                        )
+                      )}
+
                       <DropdownMenu>
                         <DropdownMenuTrigger
                           render={
                             <Button
                               aria-label={`${t('Chat options')}: ${title}`}
                               className='absolute top-1/2 right-1 size-7 -translate-y-1/2 opacity-0 group-hover/chat-row:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100'
-                              disabled={props.disabled}
+                              disabled={props.disabled || isGenerating}
                               size='icon-sm'
                               type='button'
                               variant='ghost'
@@ -203,14 +222,14 @@ export function PlaygroundHistorySidebar(props: PlaygroundHistorySidebarProps) {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align='end' side='bottom'>
                           <DropdownMenuItem
-                            disabled={props.disabled}
+                            disabled={props.disabled || isGenerating}
                             onClick={() => openRenameDialog(session)}
                           >
                             <PencilIcon />
                             {t('Rename')}
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            disabled={props.disabled}
+                            disabled={props.disabled || isGenerating}
                             onClick={() => setDeleteTarget(session)}
                             variant='destructive'
                           >

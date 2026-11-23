@@ -148,12 +148,13 @@ export function usePlaygroundState() {
   )
 
   const updateMessages = useCallback(
-    (updater: MessageStateUpdater) => {
-      const currentSessionId = activeSessionIdRef.current
+    (updater: MessageStateUpdater, sessionId?: string) => {
+      const currentSessionId = sessionId ?? activeSessionIdRef.current
       const targetSessionId = currentSessionId ?? nanoid()
-      const initialMessages = currentSessionId
-        ? null
-        : applyMessageStateUpdate([], updater)
+      const initialMessages =
+        currentSessionId && sessionId === undefined
+          ? null
+          : applyMessageStateUpdate([], updater)
 
       if (initialMessages?.length === 0) return
       if (!currentSessionId) {
@@ -212,7 +213,23 @@ export function usePlaygroundState() {
     [setActiveSessionId]
   )
 
+  const ensureActiveSessionId = useCallback(() => {
+    const currentSessionId = activeSessionIdRef.current
+    if (currentSessionId) return currentSessionId
+
+    const sessionId = nanoid()
+    setActiveSessionId(sessionId)
+    setSessions((previousSessions) => [
+      createChatSession([], Date.now(), sessionId),
+      ...previousSessions,
+    ])
+    return sessionId
+  }, [setActiveSessionId])
+
   const createNewChat = useCallback(() => {
+    setSessions((previousSessions) =>
+      previousSessions.filter((session) => session.messages.length > 0)
+    )
     setActiveSessionId(null)
   }, [setActiveSessionId])
 
@@ -274,6 +291,7 @@ export function usePlaygroundState() {
     updateConfig,
     updateParameterEnabled,
     updateMessages,
+    ensureActiveSessionId,
     createNewChat,
     selectChat,
     renameChat,

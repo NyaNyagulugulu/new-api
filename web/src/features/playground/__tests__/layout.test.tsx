@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
 
@@ -26,8 +26,8 @@ import { Playground } from '../index'
 const mocks = vi.hoisted(() => ({
   back: vi.fn(),
   navigate: vi.fn(),
-  setOpen: vi.fn(),
-  setOpenMobile: vi.fn(),
+  selectChat: vi.fn(),
+  stopGeneration: vi.fn(),
 }))
 
 vi.mock('@tanstack/react-router', () => ({
@@ -40,14 +40,6 @@ vi.mock('@tanstack/react-router', () => ({
   }),
 }))
 
-vi.mock('@/components/ui/sidebar', () => ({
-  useSidebar: () => ({
-    open: true,
-    setOpen: mocks.setOpen,
-    setOpenMobile: mocks.setOpenMobile,
-  }),
-}))
-
 vi.mock('@/features/playground/components/chat/playground-chat', () => ({
   PlaygroundChat: () => <div data-testid='web-chat' />,
 }))
@@ -55,19 +47,29 @@ vi.mock('@/features/playground/components/chat/playground-chat', () => ({
 vi.mock(
   '@/features/playground/components/history/playground-history-sidebar',
   () => ({
-    PlaygroundHistorySidebar: () => <div data-testid='history-sidebar' />,
+    PlaygroundHistorySidebar: ({
+      onSelectChat,
+    }: {
+      onSelectChat: (sessionId: string) => void
+    }) => (
+      <button onClick={() => onSelectChat('chat-2')} type='button'>
+        Other chat
+      </button>
+    ),
   })
 )
 
 vi.mock('@/features/playground/components/input/playground-input', () => ({
-  PlaygroundInput: () => <div data-testid='chat-input' />,
+  PlaygroundInput: ({ disabled }: { disabled?: boolean }) => (
+    <div data-disabled={String(Boolean(disabled))} data-testid='chat-input' />
+  ),
 }))
 
 vi.mock('../hooks', () => ({
   useChatHandler: () => ({
     sendChat: vi.fn(),
-    stopGeneration: vi.fn(),
-    isGenerating: false,
+    stopGeneration: mocks.stopGeneration,
+    generatingSessionIds: new Set(['chat-1']),
   }),
   usePlaygroundConversation: () => ({
     editingMessageKey: null,
@@ -83,7 +85,13 @@ vi.mock('../hooks', () => ({
     config: DEFAULT_CONFIG,
     parameterEnabled: DEFAULT_PARAMETER_ENABLED,
     messages: [],
-    activeSession: null,
+    activeSession: {
+      id: 'chat-2',
+      title: 'Other chat',
+      messages: [],
+      createdAt: 0,
+      updatedAt: 0,
+    },
     sessions: [],
     isLoadingMessages: false,
     models: [],
@@ -94,22 +102,30 @@ vi.mock('../hooks', () => ({
     updateParameterEnabled: vi.fn(),
     updateMessages: vi.fn(),
     createNewChat: vi.fn(),
-    selectChat: vi.fn(),
+    selectChat: mocks.selectChat,
     renameChat: vi.fn(),
     deleteChat: vi.fn(),
   }),
 }))
 
-test('collapses the app sidebar, restores it on leave, and provides back navigation', async () => {
+test('provides back navigation from the web chat header', async () => {
   const user = userEvent.setup()
-  const { unmount } = render(<Playground />)
-
-  await waitFor(() => expect(mocks.setOpen).toHaveBeenCalledWith(false))
-  expect(mocks.setOpenMobile).toHaveBeenCalledWith(false)
+  render(<Playground />)
 
   await user.click(screen.getByRole('button', { name: 'Back' }))
   expect(mocks.back).toHaveBeenCalledOnce()
+})
 
-  unmount()
-  expect(mocks.setOpen).toHaveBeenLastCalledWith(true)
+test('switching conversations while generating keeps the active stream running', async () => {
+  const user = userEvent.setup()
+  render(<Playground />)
+
+  await user.click(screen.getByRole('button', { name: 'Other chat' }))
+
+  expect(mocks.stopGeneration).not.toHaveBeenCalled()
+  expect(mocks.selectChat).toHaveBeenCalledWith('chat-2')
+  expect(screen.getByTestId('chat-input')).toHaveAttribute(
+    'data-disabled',
+    'false'
+  )
 })

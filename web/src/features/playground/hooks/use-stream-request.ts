@@ -188,45 +188,83 @@ export function createStreamRequestController(
  * Hook for handling streaming chat completion requests
  */
 export function useStreamRequest() {
-  const [isStreaming, setIsStreaming] = useState(false)
-  const controllerRef = useRef<ReturnType<
-    typeof createStreamRequestController
-  > | null>(null)
-  if (!controllerRef.current) {
-    controllerRef.current = createStreamRequestController({
-      getHeaders: getFreshAuthHeaders,
-      createSource: (payload, headers) =>
-        new SSE(API_ENDPOINTS.CHAT_COMPLETIONS, {
-          headers,
-          method: 'POST',
-          payload: JSON.stringify(payload),
-        }) as StreamEventSource,
-      setStreaming: setIsStreaming,
-    })
-  }
+  const controllersRef = useRef(
+    new Map<string, ReturnType<typeof createStreamRequestController>>()
+  )
+  const [streamingIds, setStreamingIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  )
 
   const sendStreamRequest = useCallback(
     (
+      requestId: string,
       payload: ChatCompletionRequest,
       onUpdate: (type: 'reasoning' | 'content', chunk: string) => void,
       onComplete: (usage?: ChatCompletionUsage) => void,
       onError: (error: string, errorCode?: string) => void
-    ) =>
-      controllerRef.current?.send(payload, {
+    ) => {
+      controllersRef.current.get(requestId)?.stop()
+
+      const finish = () => {
+        controllersRef.current.delete(requestId)
+        setStreamingIds((current) => {
+          if (!current.has(requestId)) return current
+          const next = new Set(current)
+          next.delete(requestId)
+          return next
+        })
+      }
+
+      const controller = createStreamRequestController({
+        getHeaders: getFreshAuthHeaders,
+        createSource: (requestPayload, headers) =>
+          new SSE(API_ENDPOINTS.CHAT_COMPLETIONS, {
+            headers,
+            method: 'POST',
+            payload: JSON.stringify(requestPayload),
+          }) as StreamEventSource,
+        setStreaming: () => undefined,
+      })
+      controllersRef.current.set(requestId, controller)
+      setStreamingIds((current) => new Set(current).add(requestId))
+
+      void controller.send(payload, {
         onUpdate,
-        onComplete,
-        onError,
-      }),
+        onComplete: (usage) => {
+          finish()
+          onComplete(usage)
+        },
+        onError: (error, errorCode) => {
+          finish()
+          onError(error, errorCode)
+        },
+      })
+    },
     []
   )
 
-  const stopStream = useCallback(() => {
-    controllerRef.current?.stop()
+  const stopStream = useCallback((requestId?: string) => {
+    const ids = requestId ? [requestId] : [...controllersRef.current.keys()]
+
+    for (const id of ids) {
+      controllersRef.current.get(id)?.stop()
+      controllersRef.current.delete(id)
+    }
+
+    setStreamingIds((current) => {
+      if (ids.every((id) => !current.has(id))) return current
+      const next = new Set(current)
+      for (const id of ids) next.delete(id)
+      return next
+    })
   }, [])
 
   useEffect(
     () => () => {
-      controllerRef.current?.dispose()
+      for (const controller of controllersRef.current.values()) {
+        controller.dispose()
+      }
+      controllersRef.current.clear()
     },
     []
   )
@@ -234,6 +272,7 @@ export function useStreamRequest() {
   return {
     sendStreamRequest,
     stopStream,
-    isStreaming,
+    isStreaming: streamingIds.size > 0,
+    isStreamingRequest: (requestId: string) => streamingIds.has(requestId),
   }
 }

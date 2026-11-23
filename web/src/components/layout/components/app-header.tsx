@@ -92,6 +92,7 @@ type AppHeaderProps = {
    * @default true
    */
   showProfileDropdown?: boolean
+  showSidebarTrigger?: boolean
 }
 
 export function AppHeader({
@@ -103,6 +104,7 @@ export function AppHeader({
   showNotifications = true,
   showConfigDrawer = true,
   showProfileDropdown = true,
+  showSidebarTrigger = true,
 }: AppHeaderProps) {
   // Prioritize dynamically generated links from backend
   const dynamicLinks = useTopNavLinks()
@@ -112,7 +114,7 @@ export function AppHeader({
   const notifications = useNotifications()
 
   return (
-    <Header>
+    <Header showSidebarTrigger={showSidebarTrigger}>
       <div className='@container/system-brand flex min-w-0 flex-1 items-center gap-1'>
         <SystemBrand variant='inline' />
         <SystemUpdateAction presentation='version' />
