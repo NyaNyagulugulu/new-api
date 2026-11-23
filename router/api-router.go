@@ -105,6 +105,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/self/memory_settings", controller.GetUserMemorySettings)
 				selfRoute.GET("/self/memories", controller.GetUserMemories)
 				selfRoute.POST("/self/memories", controller.SaveUserMemories)
+				selfRoute.POST("/self/memories/search", controller.SearchUserMemories)
 				selfRoute.DELETE("/self/memories/:id", controller.DeleteUserMemory)
 				selfRoute.PUT("/self", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.UpdateSelf)
 				selfRoute.DELETE("/self", middleware.DisableCache(), controller.DeleteSelf)

@@ -23,6 +23,7 @@ import type { PricingModel } from '@/features/pricing/types'
 import { parseStreamUsage } from '../../streaming/stream-utils'
 import {
   estimateMessageUsageCostUSD,
+  mergeChatCompletionUsage,
   normalizeMessageUsage,
 } from '../message-usage-utils'
 
@@ -113,4 +114,28 @@ test('stream parser keeps the terminal usage chunk', () => {
     completion_tokens: 2,
     total_tokens: 5,
   })
+})
+
+test('hidden context and memory calls aggregate into the visible usage', () => {
+  const merged = mergeChatCompletionUsage(
+    {
+      prompt_tokens: 100,
+      completion_tokens: 20,
+      total_tokens: 120,
+      cost: 0.001,
+    },
+    {
+      prompt_tokens: 40,
+      completion_tokens: 10,
+      total_tokens: 50,
+      cost: 0.0002,
+    }
+  )
+
+  expect(merged).toMatchObject({
+    prompt_tokens: 140,
+    completion_tokens: 30,
+    total_tokens: 170,
+  })
+  expect(merged?.cost).toBeCloseTo(0.0012)
 })

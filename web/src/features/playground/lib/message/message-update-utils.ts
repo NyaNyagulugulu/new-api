@@ -17,9 +17,45 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { ERROR_MESSAGES, MESSAGE_ROLES, MESSAGE_STATUS } from '../../constants'
-import type { Message } from '../../types'
+import type { Message, MessageUsage } from '../../types'
 import { completeAssistantTiming } from './message-timing-utils'
 import { updateCurrentVersionContent } from './message-utils'
+
+export function mergeMessageUsageByKey(
+  messages: Message[],
+  key: string,
+  usage: MessageUsage,
+  auxiliaryCostUSD = 0
+): Message[] {
+  return messages.map((message) => {
+    if (message.key !== key) return message
+    const current = message.usage
+    if (!current) {
+      return { ...message, usage: { ...usage, auxiliaryCostUSD } }
+    }
+    return {
+      ...message,
+      usage: {
+        ...current,
+        inputTokens: current.inputTokens + usage.inputTokens,
+        outputTokens: current.outputTokens + usage.outputTokens,
+        totalTokens: current.totalTokens + usage.totalTokens,
+        cachedTokens: current.cachedTokens + usage.cachedTokens,
+        cacheCreationTokens:
+          current.cacheCreationTokens + usage.cacheCreationTokens,
+        reasoningTokens: current.reasoningTokens + usage.reasoningTokens,
+        imageTokens: current.imageTokens + usage.imageTokens,
+        audioTokens: current.audioTokens + usage.audioTokens,
+        reportedCostUSD:
+          current.reportedCostUSD === undefined &&
+          usage.reportedCostUSD === undefined
+            ? undefined
+            : (current.reportedCostUSD ?? 0) + (usage.reportedCostUSD ?? 0),
+        auxiliaryCostUSD: (current.auxiliaryCostUSD ?? 0) + auxiliaryCostUSD,
+      },
+    }
+  })
+}
 
 /**
  * Update the last assistant message with an error.

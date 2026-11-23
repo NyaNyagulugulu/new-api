@@ -74,7 +74,15 @@ export function MessageMetadata(props: MessageMetadataProps) {
     ? models.find((model) => model.model_name === usage.model)
     : undefined
   const estimatedCostUSD = usage
-    ? estimateMessageUsageCostUSD(usage, pricingModel, groupRatio)
+    ? (() => {
+        const estimated = estimateMessageUsageCostUSD(
+          usage,
+          pricingModel,
+          groupRatio
+        )
+        if (estimated == null && !usage.auxiliaryCostUSD) return null
+        return (estimated ?? 0) + (usage.auxiliaryCostUSD ?? 0)
+      })()
     : null
 
   if (!messageTime && !duration && !usage) {

@@ -65,6 +65,11 @@ const schema = z.object({
     .max(20_000),
   'memory_setting.min_importance': z.coerce.number().min(0).max(1),
   'memory_setting.retention_days': z.coerce.number().int().min(1).max(3_650),
+  'memory_setting.embedding_enabled': z.boolean(),
+  'memory_setting.embedding_model': z.string(),
+  'memory_setting.embedding_group': z.string(),
+  'memory_setting.min_similarity': z.coerce.number().min(0).max(1),
+  'memory_setting.vector_weight': z.coerce.number().min(0).max(1),
 })
 
 export type MemorySettingsValues = z.output<typeof schema>
@@ -143,7 +148,50 @@ export function MemorySettingsCard(props: {
             )}
           />
 
+          <FormField
+            control={form.control}
+            name='memory_setting.embedding_enabled'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>{t('Embedding enabled')}</FormLabel>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+              </SettingsSwitchItem>
+            )}
+          />
+
           <Separator />
+
+          {(
+            [
+              ['memory_setting.embedding_model', 'Embedding model'],
+              ['memory_setting.embedding_group', 'Embedding group'],
+            ] as const
+          ).map(([name, label]) => (
+            <FormField
+              control={form.control}
+              key={name}
+              name={name}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t(label)}</FormLabel>
+                  <FormControl>
+                    <Input
+                      onChange={(event) => field.onChange(event.target.value)}
+                      value={field.value}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          ))}
 
           {(
             [
@@ -153,6 +201,8 @@ export function MemorySettingsCard(props: {
               'memory_setting.max_injected_chars',
               'memory_setting.min_importance',
               'memory_setting.retention_days',
+              'memory_setting.min_similarity',
+              'memory_setting.vector_weight',
             ] as const
           ).map((name) => (
             <FormField
@@ -173,6 +223,8 @@ export function MemorySettingsCard(props: {
                           'Max injected characters',
                         'memory_setting.min_importance': 'Minimum importance',
                         'memory_setting.retention_days': 'Retention days',
+                        'memory_setting.min_similarity': 'Minimum similarity',
+                        'memory_setting.vector_weight': 'Vector weight',
                       }[name]
                     )}
                   </FormLabel>
@@ -180,7 +232,13 @@ export function MemorySettingsCard(props: {
                     <Input
                       min={0}
                       onChange={(event) => field.onChange(event.target.value)}
-                      step={name === 'memory_setting.min_importance' ? 0.05 : 1}
+                      step={
+                        name === 'memory_setting.min_importance' ||
+                        name === 'memory_setting.min_similarity' ||
+                        name === 'memory_setting.vector_weight'
+                          ? 0.05
+                          : 1
+                      }
                       type='number'
                       value={field.value}
                     />

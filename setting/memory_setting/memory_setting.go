@@ -1,6 +1,10 @@
 package memory_setting
 
-import "github.com/QuantumNous/new-api/setting/config"
+import (
+	"strings"
+
+	"github.com/QuantumNous/new-api/setting/config"
+)
 
 type MemorySetting struct {
 	Enabled               bool    `json:"enabled"`
@@ -11,6 +15,11 @@ type MemorySetting struct {
 	MaxInjectedChars      int     `json:"max_injected_chars"`
 	MinImportance         float64 `json:"min_importance"`
 	RetentionDays         int     `json:"retention_days"`
+	EmbeddingEnabled      bool    `json:"embedding_enabled"`
+	EmbeddingModel        string  `json:"embedding_model"`
+	EmbeddingGroup        string  `json:"embedding_group"`
+	MinSimilarity         float64 `json:"min_similarity"`
+	VectorWeight          float64 `json:"vector_weight"`
 }
 
 var memorySetting = MemorySetting{
@@ -22,6 +31,11 @@ var memorySetting = MemorySetting{
 	MaxInjectedChars:      3_000,
 	MinImportance:         0.25,
 	RetentionDays:         365,
+	EmbeddingEnabled:      false,
+	EmbeddingModel:        "",
+	EmbeddingGroup:        "",
+	MinSimilarity:         0.45,
+	VectorWeight:          0.5,
 }
 
 func init() {
@@ -36,5 +50,9 @@ func Get() MemorySetting {
 	settings.MaxInjectedChars = max(200, min(settings.MaxInjectedChars, 20_000))
 	settings.MinImportance = max(0, min(settings.MinImportance, 1))
 	settings.RetentionDays = max(1, min(settings.RetentionDays, 3_650))
+	settings.MinSimilarity = max(0, min(settings.MinSimilarity, 1))
+	settings.VectorWeight = max(0, min(settings.VectorWeight, 1))
+	settings.EmbeddingModel = strings.TrimSpace(settings.EmbeddingModel)
+	settings.EmbeddingGroup = strings.TrimSpace(settings.EmbeddingGroup)
 	return settings
 }

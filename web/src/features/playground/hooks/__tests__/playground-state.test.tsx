@@ -35,6 +35,7 @@ import { useChatHandler } from '../use-chat-handler'
 import { usePlaygroundState } from '../use-playground-state'
 
 const apiMocks = vi.hoisted(() => ({
+  createEmbeddings: vi.fn(),
   deleteChatConversation: vi.fn(),
   getChatConversations: vi.fn(),
   searchWeb: vi.fn(),
@@ -44,6 +45,7 @@ const apiMocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../../api', () => ({
+  createEmbeddings: apiMocks.createEmbeddings,
   deleteChatConversation: apiMocks.deleteChatConversation,
   getChatConversations: apiMocks.getChatConversations,
   searchWeb: apiMocks.searchWeb,
@@ -67,6 +69,7 @@ vi.mock('../use-stream-request', () => ({
 beforeEach(() => {
   localStorage.clear()
   apiMocks.getChatConversations.mockResolvedValue([])
+  apiMocks.createEmbeddings.mockResolvedValue([[1, 0, 0]])
   apiMocks.searchWeb.mockResolvedValue([])
   apiMocks.searchUserMemories.mockResolvedValue([])
   apiMocks.syncChatConversations.mockResolvedValue([])

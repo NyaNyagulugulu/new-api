@@ -19,17 +19,31 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 
-import { getMemorySettings, saveUserMemories, sendChatCompletion } from '../api'
+import {
+  createEmbeddings,
+  getMemorySettings,
+  saveUserMemories,
+  sendChatCompletion,
+} from '../api'
 import {
   buildMemoryExtractionMessages,
   getMemoryExtractionResponseContent,
   isMemoryExtractionMessage,
+  mergeChatCompletionUsage,
+  normalizeMessageUsage,
   parseExtractedMemories,
 } from '../lib'
-import type { ChatSession, MemorySettings, PlaygroundConfig } from '../types'
+import type {
+  ChatSession,
+  ChatCompletionUsage,
+  MemorySettings,
+  MessageUsage,
+  PlaygroundConfig,
+} from '../types'
 
 type UseLongTermMemoryParams = {
   config: PlaygroundConfig
+  onUsage?: (sessionId: string, messageKey: string, usage: MessageUsage) => void
   sessions: ChatSession[]
   settings?: MemorySettings
 }
@@ -46,6 +60,7 @@ export function useMemorySettings() {
 
 export function useLongTermMemoryReflection({
   config,
+  onUsage,
   sessions,
   settings,
 }: UseLongTermMemoryParams) {
@@ -129,8 +144,38 @@ export function useLongTermMemoryReflection({
             conversation_id: session.id,
             source_key: sourceKey,
           }))
+          let embeddingUsage: ChatCompletionUsage | undefined
           if (memories.length > 0) {
-            await saveUserMemories(memories)
+            let embeddings: number[][] = []
+            if (settings.embedding_enabled && settings.embedding_model) {
+              try {
+                const embeddingResult = await createEmbeddings(
+                  memories.map((memory) => memory.content),
+                  settings.embedding_model,
+                  settings.embedding_group || config.group
+                )
+                embeddings = embeddingResult.embeddings
+                embeddingUsage = embeddingResult.usage
+              } catch {
+                embeddings = []
+              }
+            }
+            await saveUserMemories(
+              memories.map((memory, index) => ({
+                ...memory,
+                ...(embeddings[index]?.length
+                  ? { embedding: embeddings[index] }
+                  : {}),
+              }))
+            )
+          }
+          const usage = mergeChatCompletionUsage(response.usage, embeddingUsage)
+          if (usage) {
+            onUsage?.(
+              session.id,
+              lastMessage.key,
+              normalizeMessageUsage(usage, config.model, config.group)
+            )
           }
         })
         .catch(() => {
@@ -142,5 +187,5 @@ export function useLongTermMemoryReflection({
           activeSessionsRef.current = next
         })
     }
-  }, [config.group, config.model, sessions, settings])
+  }, [config.group, config.model, onUsage, sessions, settings])
 }

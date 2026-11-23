@@ -86,6 +86,16 @@ const MODELS_SECTIONS = [
             settings['memory_setting.min_importance'],
           'memory_setting.retention_days':
             settings['memory_setting.retention_days'],
+          'memory_setting.embedding_enabled':
+            settings['memory_setting.embedding_enabled'],
+          'memory_setting.embedding_model':
+            settings['memory_setting.embedding_model'],
+          'memory_setting.embedding_group':
+            settings['memory_setting.embedding_group'],
+          'memory_setting.min_similarity':
+            settings['memory_setting.min_similarity'],
+          'memory_setting.vector_weight':
+            settings['memory_setting.vector_weight'],
         }}
       />
     ),

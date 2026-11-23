@@ -25,14 +25,51 @@ func GetUserMemories(c *gin.Context) {
 	if limit <= 0 {
 		limit = 20
 	}
-	memories, err := model.SearchUserMemories(
-		c.Request.Context(),
-		userId,
-		c.Query("q"),
-		limit,
-		settings.MinImportance,
-		settings.RetentionDays,
-	)
+	memories, err := model.SearchUserMemories(c.Request.Context(), userId, model.UserMemorySearchOptions{
+		Query:         c.Query("q"),
+		Limit:         limit,
+		MinImportance: settings.MinImportance,
+		RetentionDays: settings.RetentionDays,
+		MinSimilarity: settings.MinSimilarity,
+		VectorWeight:  settings.VectorWeight,
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, memories)
+}
+
+type searchUserMemoriesRequest struct {
+	Query     string    `json:"query"`
+	Embedding []float64 `json:"embedding"`
+}
+
+func SearchUserMemories(c *gin.Context) {
+	userId := c.GetInt("id")
+	if userId <= 0 {
+		common.ApiErrorMsg(c, "Invalid user")
+		return
+	}
+	var request searchUserMemoriesRequest
+	if err := common.DecodeJson(c.Request.Body, &request); err != nil {
+		common.ApiErrorMsg(c, "Invalid parameters")
+		return
+	}
+	if err := model.ValidateUserMemoryEmbedding(request.Embedding); err != nil {
+		common.ApiErrorMsg(c, "Invalid parameters")
+		return
+	}
+	settings := memory_setting.Get()
+	memories, err := model.SearchUserMemories(c.Request.Context(), userId, model.UserMemorySearchOptions{
+		Query:         request.Query,
+		Embedding:     request.Embedding,
+		Limit:         settings.RetrieveLimit,
+		MinImportance: settings.MinImportance,
+		RetentionDays: settings.RetentionDays,
+		MinSimilarity: settings.MinSimilarity,
+		VectorWeight:  settings.VectorWeight,
+	})
 	if err != nil {
 		common.ApiError(c, err)
 		return

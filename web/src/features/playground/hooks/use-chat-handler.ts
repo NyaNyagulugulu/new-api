@@ -21,7 +21,12 @@ import { useTranslation } from 'react-i18next'
 
 import { handleServerError } from '@/lib/handle-server-error'
 
-import { searchUserMemories, searchWeb, sendChatCompletion } from '../api'
+import {
+  createEmbeddings,
+  searchUserMemories,
+  searchWeb,
+  sendChatCompletion,
+} from '../api'
 import { ERROR_MESSAGES } from '../constants'
 import {
   addWebSearchContext,
@@ -38,6 +43,7 @@ import {
   insertContextSummaryMessage,
   isAssistantMessageFinal,
   isAssistantMessagePending,
+  mergeChatCompletionUsage,
   normalizeMessageUsage,
   parseRequestErrorDetails,
   planContextCompaction,
@@ -78,6 +84,8 @@ type PendingStreamChunks = {
 
 type ActiveGeneration = {
   abortController: AbortController | null
+  auxiliaryCostUSD: number
+  auxiliaryUsage?: ChatCompletionUsage
   pending: PendingStreamChunks
   sessionId?: string
   timer: number | null
@@ -275,6 +283,10 @@ export function useChatHandler({
       const request = generationsRef.current.get(generation)
       if (!request) return
       const streamUpdate = drainPendingStreamUpdates(generation)
+      const mergedUsage = mergeChatCompletionUsage(
+        usage,
+        request.auxiliaryUsage
+      )
       removeGeneration(generation, request.sessionId)
       onMessageUpdate(
         (prev) =>
@@ -285,14 +297,17 @@ export function useChatHandler({
             const completedMessage = {
               ...streamedMessage,
               model: config.model,
-              ...(usage
+              ...(mergedUsage
                 ? {
-                    usage: normalizeMessageUsage(
-                      usage,
-                      config.model,
-                      config.group,
-                      config.reasoningEffort
-                    ),
+                    usage: {
+                      ...normalizeMessageUsage(
+                        mergedUsage,
+                        config.model,
+                        config.group,
+                        config.reasoningEffort
+                      ),
+                      auxiliaryCostUSD: request.auxiliaryCostUSD,
+                    },
                   }
                 : {}),
             }
@@ -390,6 +405,7 @@ export function useChatHandler({
       nextGenerationRef.current += 1
       const request: ActiveGeneration = {
         abortController: null,
+        auxiliaryCostUSD: 0,
         pending: { content: '', reasoning: '' },
         sessionId,
         timer: null,
@@ -506,17 +522,29 @@ export function useChatHandler({
         }
 
         removeGeneration(generation, sessionId)
+        const mergedUsage = mergeChatCompletionUsage(
+          response.usage,
+          request.auxiliaryUsage
+        )
         onMessageUpdate(
           (prev) =>
             updateLastAssistantMessage(prev, (message) => {
               const updatedMessage = applyChatCompletionResponse(
                 message,
-                response,
+                { ...response, usage: mergedUsage },
                 config.model,
                 config.group,
                 config.reasoningEffort
               )
-              return updatedMessage ?? message
+              if (!updatedMessage) return message
+              if (!updatedMessage.usage) return updatedMessage
+              return {
+                ...updatedMessage,
+                usage: {
+                  ...updatedMessage.usage,
+                  auxiliaryCostUSD: request.auxiliaryCostUSD,
+                },
+              }
             }),
           sessionId
         )
@@ -594,6 +622,13 @@ export function useChatHandler({
               return
             }
             const summaryMessage = createContextSummaryMessage(summary)
+            const request = generationsRef.current.get(generation)
+            if (request) {
+              request.auxiliaryUsage = mergeChatCompletionUsage(
+                request.auxiliaryUsage,
+                response.usage
+              )
+            }
             onMessageUpdate(
               (prev) =>
                 insertContextSummaryMessage(
@@ -621,9 +656,25 @@ export function useChatHandler({
           memorySettings.retrieve_limit > 0
         ) {
           try {
+            let queryEmbedding: number[] = []
+            if (
+              memorySettings.embedding_enabled &&
+              memorySettings.embedding_model
+            ) {
+              const embeddingResult = await createEmbeddings(
+                [query],
+                memorySettings.embedding_model,
+                memorySettings.embedding_group || config.group
+              )
+              queryEmbedding = embeddingResult.embeddings[0] ?? []
+              const embeddingCost = Number(embeddingResult.usage?.cost ?? 0)
+              if (Number.isFinite(embeddingCost) && embeddingCost > 0) {
+                request.auxiliaryCostUSD += embeddingCost
+              }
+            }
             memoryResults = await searchUserMemories(
               query,
-              memorySettings.retrieve_limit,
+              queryEmbedding,
               abortController.signal
             )
           } catch {

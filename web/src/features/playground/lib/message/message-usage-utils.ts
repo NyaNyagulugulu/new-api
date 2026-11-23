@@ -28,6 +28,28 @@ import type {
   ReasoningEffort,
 } from '../../types'
 
+export function mergeChatCompletionUsage(
+  current: ChatCompletionUsage | undefined,
+  extra: ChatCompletionUsage | undefined
+): ChatCompletionUsage | undefined {
+  if (!current) return extra
+  if (!extra) return current
+  return {
+    ...current,
+    prompt_tokens:
+      (current.prompt_tokens ?? current.input_tokens ?? 0) +
+      (extra.prompt_tokens ?? extra.input_tokens ?? 0),
+    completion_tokens:
+      (current.completion_tokens ?? current.output_tokens ?? 0) +
+      (extra.completion_tokens ?? extra.output_tokens ?? 0),
+    total_tokens: (current.total_tokens ?? 0) + (extra.total_tokens ?? 0),
+    cost:
+      current.cost === undefined && extra.cost === undefined
+        ? undefined
+        : Number(current.cost ?? 0) + Number(extra.cost ?? 0),
+  }
+}
+
 function numberValue(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value)
     ? Math.max(0, value)

@@ -71,6 +71,7 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/user/self/memory_settings":           accessTokenScopeRule("profile:read"),
 	"GET /api/user/self/memories":                  accessTokenScopeRule("profile:read"),
 	"POST /api/user/self/memories":                 accessTokenScopeRule("profile:write"),
+	"POST /api/user/self/memories/search":          accessTokenScopeRule("profile:read"),
 	"DELETE /api/user/self/memories/:id":           accessTokenScopeRule("profile:write"),
 	"PUT /api/user/self":                           accessTokenScopeRule("profile:write"),
 	"DELETE /api/user/self":                        accessTokenScopeRule("account_security:write"),
@@ -314,6 +315,7 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 
 	// router/relay-router.go
 	"POST /pg/chat/completions": accessTokenSessionRule,
+	"POST /pg/embeddings":       accessTokenSessionRule,
 	"POST /pg/tools/search":     accessTokenSessionRule,
 }
 

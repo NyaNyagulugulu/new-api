@@ -79,7 +79,8 @@ func Distribute() func(c *gin.Context) {
 					return
 				}
 				// check path is /pg/chat/completions
-				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
+				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") ||
+					strings.HasPrefix(c.Request.URL.Path, "/pg/embeddings") {
 					usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 					playgroundRequest := &dto.PlayGroundRequest{}
 					err = common.UnmarshalBodyReusable(c, playgroundRequest)

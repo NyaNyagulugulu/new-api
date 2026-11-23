@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useNavigate, useRouter } from '@tanstack/react-router'
 import { ArrowLeftIcon, PanelLeftIcon, SquarePenIcon } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -46,9 +46,10 @@ import {
 import {
   createCompletionSoundPlayer,
   getChatSessionTitle,
+  mergeMessageUsageByKey,
   type CompletionSoundPlayer,
 } from './lib'
-import type { Message, MessageAttachment } from './types'
+import type { Message, MessageAttachment, MessageUsage } from './types'
 
 export function Playground() {
   const { t } = useTranslation()
@@ -86,6 +87,16 @@ export function Playground() {
     renameChat,
     deleteChat,
   } = usePlaygroundState()
+  const handleMemoryUsage = useCallback(
+    (sessionId: string, messageKey: string, usage: MessageUsage) => {
+      updateMessages(
+        (previousMessages) =>
+          mergeMessageUsageByKey(previousMessages, messageKey, usage),
+        sessionId
+      )
+    },
+    [updateMessages]
+  )
   const { models: pricingModels } = usePricingData()
   const memorySettings = useMemorySettings()
 
@@ -116,6 +127,7 @@ export function Playground() {
 
   useLongTermMemoryReflection({
     config,
+    onUsage: handleMemoryUsage,
     sessions,
     settings: memorySettings,
   })

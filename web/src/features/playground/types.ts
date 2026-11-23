@@ -60,6 +60,7 @@ export interface MessageUsage {
   group?: string
   reasoningEffort?: ReasoningEffort
   reportedCostUSD?: number
+  auxiliaryCostUSD?: number
 }
 
 export interface Message {
@@ -147,6 +148,11 @@ export interface MemorySettings {
   max_injected_chars: number
   min_importance: number
   retention_days: number
+  embedding_enabled: boolean
+  embedding_model: string
+  embedding_group: string
+  min_similarity: number
+  vector_weight: number
 }
 
 export interface UserMemory {
@@ -169,6 +175,7 @@ export interface UserMemoryInput {
   importance: number
   conversation_id: string
   source_key: string
+  embedding?: number[]
 }
 
 export interface ChatCompletionChunk {

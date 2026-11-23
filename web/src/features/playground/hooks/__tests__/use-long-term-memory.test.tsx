@@ -24,12 +24,14 @@ import type { ChatSession, MemorySettings } from '../../types'
 import { useLongTermMemoryReflection } from '../use-long-term-memory'
 
 const apiMocks = vi.hoisted(() => ({
+  createEmbeddings: vi.fn(),
   getMemorySettings: vi.fn(),
   saveUserMemories: vi.fn(),
   sendChatCompletion: vi.fn(),
 }))
 
 vi.mock('../../api', () => ({
+  createEmbeddings: apiMocks.createEmbeddings,
   getMemorySettings: apiMocks.getMemorySettings,
   saveUserMemories: apiMocks.saveUserMemories,
   sendChatCompletion: apiMocks.sendChatCompletion,
@@ -44,6 +46,11 @@ const settings: MemorySettings = {
   max_injected_chars: 3_000,
   min_importance: 0.2,
   retention_days: 365,
+  embedding_enabled: false,
+  embedding_model: 'embedding-test',
+  embedding_group: 'default',
+  min_similarity: 0.4,
+  vector_weight: 0.5,
 }
 
 function createSession(answer: string, key: string): ChatSession {

@@ -27,6 +27,7 @@ import type {
   ChatSession,
   ChatCompletionRequest,
   ChatCompletionResponse,
+  ChatCompletionUsage,
   ModelOption,
   GroupOption,
   MemorySettings,
@@ -191,13 +192,19 @@ export async function getMemorySettings(): Promise<MemorySettings> {
 
 export async function searchUserMemories(
   query: string,
-  limit: number,
+  embedding: number[],
   signal?: AbortSignal
 ): Promise<UserMemory[]> {
-  const res = await api.get(API_ENDPOINTS.MEMORIES, {
-    params: { q: query, limit },
-    signal,
-  })
+  const res = await api.post(
+    API_ENDPOINTS.MEMORY_SEARCH,
+    {
+      query,
+      embedding,
+    },
+    {
+      signal,
+    }
+  )
   const data = requireServerSuccess(res.data)
   return Array.isArray(data) ? (data as UserMemory[]) : []
 }
@@ -207,4 +214,32 @@ export async function saveUserMemories(
 ): Promise<void> {
   const res = await api.post(API_ENDPOINTS.MEMORIES, { memories })
   requireServerSuccess(res.data)
+}
+
+export async function createEmbeddings(
+  input: string[],
+  model: string,
+  group: string
+): Promise<{ embeddings: number[][]; usage?: ChatCompletionUsage }> {
+  const res = await api.post(API_ENDPOINTS.EMBEDDINGS, {
+    model,
+    group,
+    input,
+  })
+  const data = res.data as {
+    data?: Array<{ embedding?: unknown; index?: number }>
+    usage?: ChatCompletionUsage
+  }
+  if (!Array.isArray(data.data)) return { embeddings: [], usage: data.usage }
+  const embeddings = [...data.data]
+    .sort((left, right) => (left.index ?? 0) - (right.index ?? 0))
+    .map((item) =>
+      Array.isArray(item.embedding)
+        ? item.embedding.filter(
+            (value): value is number =>
+              typeof value === 'number' && Number.isFinite(value)
+          )
+        : []
+    )
+  return { embeddings, usage: data.usage }
 }

@@ -241,6 +241,11 @@ export type ModelSettings = {
   'memory_setting.max_injected_chars': number
   'memory_setting.min_importance': number
   'memory_setting.retention_days': number
+  'memory_setting.embedding_enabled': boolean
+  'memory_setting.embedding_model': string
+  'memory_setting.embedding_group': string
+  'memory_setting.min_similarity': number
+  'memory_setting.vector_weight': number
   'gemini.safety_settings': string
   'gemini.version_settings': string
   'gemini.supported_imagine_models': string

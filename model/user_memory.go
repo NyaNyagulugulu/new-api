@@ -12,6 +12,8 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/QuantumNous/new-api/common"
+
 	"gorm.io/gorm"
 )
 
@@ -20,6 +22,7 @@ const (
 	MaxUserMemoriesPerSave = 20
 	MaxUserMemoryContent   = 4_000
 	MaxUserMemoryKeywords  = 1_000
+	MaxUserMemoryEmbedding = 4_096
 )
 
 type UserMemory struct {
@@ -35,15 +38,27 @@ type UserMemory struct {
 	Status         string  `json:"status" gorm:"type:varchar(16);not null;index:idx_user_memories_user_updated,priority:2"`
 	CreatedAt      int64   `json:"created_at" gorm:"not null;default:0"`
 	UpdatedAt      int64   `json:"updated_at" gorm:"not null;default:0;index:idx_user_memories_user_updated,priority:3"`
+	Embedding      string  `json:"-" gorm:"type:text"`
 }
 
 type UserMemoryInput struct {
-	Content        string   `json:"content"`
-	Keywords       []string `json:"keywords"`
-	Category       string   `json:"category"`
-	Importance     float64  `json:"importance"`
-	ConversationId string   `json:"conversation_id"`
-	SourceKey      string   `json:"source_key"`
+	Content        string    `json:"content"`
+	Keywords       []string  `json:"keywords"`
+	Category       string    `json:"category"`
+	Importance     float64   `json:"importance"`
+	ConversationId string    `json:"conversation_id"`
+	SourceKey      string    `json:"source_key"`
+	Embedding      []float64 `json:"embedding"`
+}
+
+type UserMemorySearchOptions struct {
+	Query         string
+	Embedding     []float64
+	Limit         int
+	MinImportance float64
+	RetentionDays int
+	MinSimilarity float64
+	VectorWeight  float64
 }
 
 func hashUserMemoryContent(content string) string {
@@ -90,7 +105,30 @@ func ValidateUserMemoryInput(input *UserMemoryInput) error {
 	if len(input.ConversationId) > 64 || len(input.SourceKey) > 128 {
 		return fmt.Errorf("invalid memory metadata")
 	}
+	return ValidateUserMemoryEmbedding(input.Embedding)
+}
+
+func ValidateUserMemoryEmbedding(embedding []float64) error {
+	if len(embedding) > MaxUserMemoryEmbedding {
+		return fmt.Errorf("memory embedding is too large")
+	}
+	for _, value := range embedding {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return fmt.Errorf("invalid memory embedding")
+		}
+	}
 	return nil
+}
+
+func encodeMemoryEmbedding(values []float64) string {
+	if len(values) == 0 {
+		return ""
+	}
+	encoded, err := common.Marshal(values)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
 }
 
 func SaveUserMemories(ctx context.Context, userId int, inputs []UserMemoryInput) error {
@@ -109,6 +147,7 @@ func SaveUserMemories(ctx context.Context, userId int, inputs []UserMemoryInput)
 				return err
 			}
 			hash := hashUserMemoryContent(input.Content)
+			embedding := encodeMemoryEmbedding(input.Embedding)
 			var existing UserMemory
 			err := lockForUpdate(tx).
 				Where("user_id = ? AND content_hash = ?", userId, hash).
@@ -123,6 +162,9 @@ func SaveUserMemories(ctx context.Context, userId int, inputs []UserMemoryInput)
 					"source_key":      input.SourceKey,
 					"status":          UserMemoryStatusActive,
 					"updated_at":      now,
+				}
+				if embedding != "" {
+					updates["embedding"] = embedding
 				}
 				if err := tx.Model(&UserMemory{}).
 					Where("id = ? AND user_id = ?", existing.Id, userId).
@@ -142,6 +184,7 @@ func SaveUserMemories(ctx context.Context, userId int, inputs []UserMemoryInput)
 					Status:         UserMemoryStatusActive,
 					CreatedAt:      now,
 					UpdatedAt:      now,
+					Embedding:      embedding,
 				}).Error; err != nil {
 					return err
 				}
@@ -211,48 +254,91 @@ func memoryQueryTokens(query string) []string {
 	return tokens
 }
 
-func scoreUserMemory(memory UserMemory, tokens []string, query string, now int64) (float64, bool) {
+func cosineSimilarity(left, right []float64) float64 {
+	if len(left) == 0 || len(left) != len(right) {
+		return 0
+	}
+	var dot, leftNorm, rightNorm float64
+	for index := range left {
+		dot += left[index] * right[index]
+		leftNorm += left[index] * left[index]
+		rightNorm += right[index] * right[index]
+	}
+	if leftNorm <= 0 || rightNorm <= 0 {
+		return 0
+	}
+	return dot / (math.Sqrt(leftNorm) * math.Sqrt(rightNorm))
+}
+
+func decodeMemoryEmbedding(value string) []float64 {
+	if value == "" {
+		return nil
+	}
+	var embedding []float64
+	if err := common.UnmarshalJsonStr(value, &embedding); err != nil {
+		return nil
+	}
+	return embedding
+}
+
+func scoreUserMemory(
+	memory UserMemory,
+	tokens []string,
+	query string,
+	queryEmbedding []float64,
+	now int64,
+	minSimilarity float64,
+	vectorWeight float64,
+) (float64, bool) {
 	content := strings.ToLower(memory.Content)
 	keywords := strings.ToLower(memory.Keywords)
 	relevance := 0.0
-	score := memory.Importance * 2
+	keywordScore := 0.0
 	for _, token := range tokens {
 		if strings.Contains(content, token) {
-			score += 2
+			keywordScore += 2
 			relevance += 2
 		}
 		if strings.Contains(keywords, token) {
-			score += 3
+			keywordScore += 3
 			relevance += 3
 		}
 	}
 	if query != "" && strings.Contains(content, strings.ToLower(query)) {
-		score += 5
+		keywordScore += 5
 		relevance += 5
 	}
+	similarity := 0.0
+	if len(queryEmbedding) > 0 {
+		similarity = max(cosineSimilarity(queryEmbedding, decodeMemoryEmbedding(memory.Embedding)), 0)
+	}
+	vectorWeight = min(max(vectorWeight, 0), 1)
+	score := keywordScore*(1-vectorWeight) + similarity*8*vectorWeight +
+		memory.Importance*2
 	ageDays := max(float64(now-memory.UpdatedAt)/86_400_000, 0)
 	score += math.Exp(-ageDays / 90)
-	return score, query == "" || relevance > 0
+	matched := query == ""
+	if query != "" {
+		matched = relevance > 0 ||
+			(len(queryEmbedding) > 0 && similarity >= max(minSimilarity, 0))
+	}
+	return score, matched
 }
 
-func SearchUserMemories(
-	ctx context.Context,
-	userId int,
-	query string,
-	limit int,
-	minImportance float64,
-	retentionDays int,
-) ([]UserMemory, error) {
+func SearchUserMemories(ctx context.Context, userId int, options UserMemorySearchOptions) ([]UserMemory, error) {
 	if userId <= 0 {
 		return nil, fmt.Errorf("invalid user")
 	}
-	limit = max(1, min(limit, 50))
+	if err := ValidateUserMemoryEmbedding(options.Embedding); err != nil {
+		return nil, err
+	}
+	limit := max(1, min(options.Limit, 50))
 	now := time.Now().UnixMilli()
-	cutoff := now - int64(max(retentionDays, 1))*86_400_000
+	cutoff := now - int64(max(options.RetentionDays, 1))*86_400_000
 	memories := make([]UserMemory, 0)
 	err := DB.WithContext(ctx).
 		Where("user_id = ? AND status = ? AND importance >= ? AND updated_at >= ?",
-			userId, UserMemoryStatusActive, max(minImportance, 0), cutoff).
+			userId, UserMemoryStatusActive, max(options.MinImportance, 0), cutoff).
 		Order("updated_at DESC").
 		Limit(500).
 		Find(&memories).Error
@@ -260,19 +346,43 @@ func SearchUserMemories(
 		return nil, err
 	}
 
-	tokens := memoryQueryTokens(query)
-	if query != "" {
+	tokens := memoryQueryTokens(options.Query)
+	if options.Query != "" {
 		filtered := memories[:0]
 		for _, memory := range memories {
-			if _, matched := scoreUserMemory(memory, tokens, query, now); matched {
+			if _, matched := scoreUserMemory(
+				memory,
+				tokens,
+				options.Query,
+				options.Embedding,
+				now,
+				options.MinSimilarity,
+				options.VectorWeight,
+			); matched {
 				filtered = append(filtered, memory)
 			}
 		}
 		memories = filtered
 	}
 	sort.SliceStable(memories, func(i, j int) bool {
-		left, _ := scoreUserMemory(memories[i], tokens, query, now)
-		right, _ := scoreUserMemory(memories[j], tokens, query, now)
+		left, _ := scoreUserMemory(
+			memories[i],
+			tokens,
+			options.Query,
+			options.Embedding,
+			now,
+			options.MinSimilarity,
+			options.VectorWeight,
+		)
+		right, _ := scoreUserMemory(
+			memories[j],
+			tokens,
+			options.Query,
+			options.Embedding,
+			now,
+			options.MinSimilarity,
+			options.VectorWeight,
+		)
 		if left == right {
 			return memories[i].UpdatedAt > memories[j].UpdatedAt
 		}

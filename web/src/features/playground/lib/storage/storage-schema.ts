@@ -101,6 +101,7 @@ const messageUsageSchema = z.object({
     .enum(['', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
     .optional(),
   reportedCostUSD: z.number().optional(),
+  auxiliaryCostUSD: z.number().optional(),
 })
 
 const messageSchema = z.object({

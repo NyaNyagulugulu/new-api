@@ -62,6 +62,8 @@ func Path2RelayMode(path string) int {
 		relayMode = RelayModeCompletions
 	} else if strings.HasPrefix(path, "/v1/embeddings") {
 		relayMode = RelayModeEmbeddings
+	} else if strings.HasPrefix(path, "/pg/embeddings") {
+		relayMode = RelayModeEmbeddings
 	} else if strings.HasSuffix(path, "embeddings") {
 		relayMode = RelayModeEmbeddings
 	} else if strings.HasPrefix(path, "/v1/moderations") {

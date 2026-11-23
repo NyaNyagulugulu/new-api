@@ -45,6 +45,8 @@ export const API_ENDPOINTS = {
   CHAT_CONVERSATIONS_SYNC: '/api/user/self/chat_conversations/sync',
   MEMORY_SETTINGS: '/api/user/self/memory_settings',
   MEMORIES: '/api/user/self/memories',
+  MEMORY_SEARCH: '/api/user/self/memories/search',
+  EMBEDDINGS: '/pg/embeddings',
   WEB_SEARCH: '/pg/tools/search',
 } as const
 
