@@ -74,7 +74,7 @@ func SetRelayRouter(router *gin.Engine) {
 	playgroundRouter.Use(middleware.UserAuth())
 	{
 		playgroundRouter.POST("/chat/completions", middleware.Distribute(), controller.Playground)
-		playgroundRouter.POST("/embeddings", middleware.Distribute(), controller.Playground)
+		playgroundRouter.POST("/embeddings", middleware.Distribute(), controller.PlaygroundEmbeddings)
 		playgroundRouter.POST("/tools/search", controller.PlaygroundToolsSearch)
 	}
 	relayV1Router := router.Group("/v1")

@@ -21,6 +21,10 @@ func Playground(c *gin.Context) {
 	playgroundRelay(c, types.RelayFormatOpenAI)
 }
 
+func PlaygroundEmbeddings(c *gin.Context) {
+	playgroundRelay(c, types.RelayFormatEmbedding)
+}
+
 func PlaygroundToolsSearch(c *gin.Context) {
 	var newAPIError *types.NewAPIError
 	defer func() {
