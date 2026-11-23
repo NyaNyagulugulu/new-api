@@ -20,6 +20,7 @@ import { api } from '@/lib/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { API_ENDPOINTS } from './constants'
+import { extractWebSearchResults } from './lib/chat/web-search'
 import { sanitizeMessagesOnLoad } from './lib/message/message-streaming-utils'
 import { chatSessionsSchema } from './lib/storage/storage-schema'
 import type {
@@ -28,6 +29,7 @@ import type {
   ChatCompletionResponse,
   ModelOption,
   GroupOption,
+  WebSearchResult,
 } from './types'
 
 /**
@@ -156,4 +158,22 @@ export async function deleteChatConversation(id: string): Promise<void> {
     `${API_ENDPOINTS.CHAT_CONVERSATIONS}/${encodeURIComponent(id)}`
   )
   requireServerSuccess(res.data)
+}
+
+export async function searchWeb(
+  query: string,
+  signal?: AbortSignal
+): Promise<WebSearchResult[]> {
+  const res = await api.post(
+    API_ENDPOINTS.WEB_SEARCH,
+    {
+      query,
+      count: 5,
+    },
+    {
+      signal,
+      skipErrorHandler: true,
+    } as Record<string, unknown>
+  )
+  return extractWebSearchResults(res.data)
 }

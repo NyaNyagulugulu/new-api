@@ -21,26 +21,29 @@ import { useTranslation } from 'react-i18next'
 
 import { handleServerError } from '@/lib/handle-server-error'
 
-import { sendChatCompletion } from '../api'
+import { searchWeb, sendChatCompletion } from '../api'
 import { ERROR_MESSAGES } from '../constants'
 import {
+  addWebSearchContext,
   applyStreamingChunk,
   buildChatCompletionPayload,
-  updateAssistantMessageWithError,
-  updateLastAssistantMessage,
-  parseRequestErrorDetails,
   applyChatCompletionResponse,
   completeAssistantMessage,
+  getWebSearchQuery,
   hasChatCompletionChoice,
   isAssistantMessageFinal,
   isAssistantMessagePending,
   normalizeMessageUsage,
+  parseRequestErrorDetails,
+  updateAssistantMessageWithError,
+  updateLastAssistantMessage,
 } from '../lib'
 import type {
   ChatCompletionUsage,
   Message,
   PlaygroundConfig,
   ParameterEnabled,
+  WebSearchResult,
 } from '../types'
 import { useStreamRequest } from './use-stream-request'
 
@@ -377,14 +380,30 @@ export function useChatHandler({
     [cancelGeneration, setSessionGenerating]
   )
 
-  const sendStreamingChat = useCallback(
-    (messages: Message[], sessionId?: string) => {
-      const generation = prepareGeneration(sessionId)
-      const payload = buildChatCompletionPayload(
-        messages,
-        config,
-        parameterEnabled
+  const startStreamingChat = useCallback(
+    (
+      messages: Message[],
+      sessionId: string | undefined,
+      generation: number,
+      searchResults: WebSearchResult[] = []
+    ) => {
+      const payload = addWebSearchContext(
+        buildChatCompletionPayload(messages, config, parameterEnabled),
+        searchResults
       )
+      if (searchResults.length > 0) {
+        onMessageUpdate(
+          (prev) =>
+            updateLastAssistantMessage(prev, (message) => ({
+              ...message,
+              sources: searchResults.map((result) => ({
+                href: result.url,
+                title: result.title,
+              })),
+            })),
+          sessionId
+        )
+      }
       sendStreamRequest(
         String(generation),
         payload,
@@ -399,24 +418,48 @@ export function useChatHandler({
       handleStreamError,
       handleStreamUpdate,
       parameterEnabled,
-      prepareGeneration,
+      onMessageUpdate,
       sendStreamRequest,
     ]
   )
 
-  const sendNonStreamingChat = useCallback(
-    async (messages: Message[], sessionId?: string) => {
+  const sendStreamingChat = useCallback(
+    (messages: Message[], sessionId?: string) => {
       const generation = prepareGeneration(sessionId)
+      startStreamingChat(messages, sessionId, generation)
+    },
+    [prepareGeneration, startStreamingChat]
+  )
+
+  const startNonStreamingChat = useCallback(
+    async (
+      messages: Message[],
+      sessionId: string | undefined,
+      generation: number,
+      searchResults: WebSearchResult[] = []
+    ) => {
       const request = generationsRef.current.get(generation)
       if (!request) return
 
       const abortController = new AbortController()
       request.abortController = abortController
-      const payload = buildChatCompletionPayload(
-        messages,
-        config,
-        parameterEnabled
+      const payload = addWebSearchContext(
+        buildChatCompletionPayload(messages, config, parameterEnabled),
+        searchResults
       )
+      if (searchResults.length > 0) {
+        onMessageUpdate(
+          (prev) =>
+            updateLastAssistantMessage(prev, (message) => ({
+              ...message,
+              sources: searchResults.map((result) => ({
+                href: result.url,
+                title: result.title,
+              })),
+            })),
+          sessionId
+        )
+      }
 
       try {
         const response = await sendChatCompletion(
@@ -461,8 +504,59 @@ export function useChatHandler({
       handleStreamError,
       onMessageUpdate,
       parameterEnabled,
-      prepareGeneration,
       removeGeneration,
+    ]
+  )
+
+  const sendNonStreamingChat = useCallback(
+    (messages: Message[], sessionId?: string) => {
+      const generation = prepareGeneration(sessionId)
+      void startNonStreamingChat(messages, sessionId, generation)
+    },
+    [prepareGeneration, startNonStreamingChat]
+  )
+
+  const sendWebSearchChat = useCallback(
+    async (messages: Message[], sessionId?: string) => {
+      const generation = prepareGeneration(sessionId)
+      const request = generationsRef.current.get(generation)
+      if (!request) return
+
+      const abortController = new AbortController()
+      request.abortController = abortController
+      let searchResults: WebSearchResult[] = []
+      const query = getWebSearchQuery(messages)
+
+      if (query) {
+        try {
+          searchResults = await searchWeb(query, abortController.signal)
+        } catch (error: unknown) {
+          if (abortController.signal.aborted) return
+          const { errorCode, errorMessage } = parseRequestErrorDetails(error)
+          handleStreamError(generation, errorMessage, errorCode)
+          return
+        }
+      }
+
+      if (
+        abortController.signal.aborted ||
+        !generationsRef.current.has(generation)
+      ) {
+        return
+      }
+
+      if (config.stream) {
+        startStreamingChat(messages, sessionId, generation, searchResults)
+        return
+      }
+      void startNonStreamingChat(messages, sessionId, generation, searchResults)
+    },
+    [
+      config.stream,
+      handleStreamError,
+      prepareGeneration,
+      startNonStreamingChat,
+      startStreamingChat,
     ]
   )
 
@@ -476,6 +570,10 @@ export function useChatHandler({
           })),
         sessionId
       )
+      if (config.webSearch) {
+        void sendWebSearchChat(messages, sessionId)
+        return
+      }
       if (config.stream) {
         sendStreamingChat(messages, sessionId)
       } else {
@@ -485,9 +583,11 @@ export function useChatHandler({
     [
       config.model,
       config.stream,
+      config.webSearch,
       onMessageUpdate,
       sendNonStreamingChat,
       sendStreamingChat,
+      sendWebSearchChat,
     ]
   )
 

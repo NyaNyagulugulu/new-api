@@ -50,21 +50,3 @@ test('omits reasoning effort when automatic selection is active', () => {
 
   expect(payload).not.toHaveProperty('reasoning_effort')
 })
-
-test('enables hosted web search only when requested', () => {
-  const disabledPayload = buildChatCompletionPayload(
-    messages,
-    { ...DEFAULT_CONFIG, webSearch: false },
-    DEFAULT_PARAMETER_ENABLED
-  )
-  const enabledPayload = buildChatCompletionPayload(
-    messages,
-    { ...DEFAULT_CONFIG, webSearch: true },
-    DEFAULT_PARAMETER_ENABLED
-  )
-
-  expect(disabledPayload).not.toHaveProperty('tools')
-  expect(enabledPayload.tools).toEqual([
-    { type: 'web_search_20250305', name: 'web_search' },
-  ])
-})

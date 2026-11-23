@@ -37,6 +37,7 @@ import { usePlaygroundState } from '../use-playground-state'
 const apiMocks = vi.hoisted(() => ({
   deleteChatConversation: vi.fn(),
   getChatConversations: vi.fn(),
+  searchWeb: vi.fn(),
   sendChatCompletion: vi.fn(),
   syncChatConversations: vi.fn(),
 }))
@@ -44,6 +45,7 @@ const apiMocks = vi.hoisted(() => ({
 vi.mock('../../api', () => ({
   deleteChatConversation: apiMocks.deleteChatConversation,
   getChatConversations: apiMocks.getChatConversations,
+  searchWeb: apiMocks.searchWeb,
   sendChatCompletion: apiMocks.sendChatCompletion,
   syncChatConversations: apiMocks.syncChatConversations,
 }))
@@ -63,6 +65,7 @@ vi.mock('../use-stream-request', () => ({
 beforeEach(() => {
   localStorage.clear()
   apiMocks.getChatConversations.mockResolvedValue([])
+  apiMocks.searchWeb.mockResolvedValue([])
   apiMocks.syncChatConversations.mockResolvedValue([])
   apiMocks.deleteChatConversation.mockResolvedValue(undefined)
   useAuthStore.getState().auth.reset()
@@ -146,4 +149,60 @@ test('final streamed chunks are committed when completion arrives immediately', 
   expect(assistantMessage?.versions[0]?.content).toBe('Hello back')
   expect(assistantMessage?.status).toBe('complete')
   expect(assistantMessage?.usage?.totalTokens).toBe(5)
+})
+
+test('web search keeps the normal reasoning stream and attaches sources', async () => {
+  apiMocks.searchWeb.mockResolvedValue([
+    {
+      title: 'Go Downloads',
+      url: 'https://go.dev/dl/',
+      snippet: 'Download Go.',
+    },
+  ])
+  const { result } = renderHook(() => usePlaygroundHarness())
+  await waitFor(() => expect(result.current.isLoadingMessages).toBe(false))
+  act(() => result.current.updateConfig('webSearch', true))
+  await waitFor(() => expect(result.current.config.webSearch).toBe(true))
+
+  let sessionId = ''
+  let messages: Message[] = []
+  act(() => {
+    sessionId = result.current.ensureActiveSessionId()
+    messages = appendUserMessagePair([], 'What is the latest Go release?')
+    result.current.updateMessages(messages, sessionId)
+    result.current.sendChat(messages, sessionId)
+  })
+
+  await waitFor(() => expect(streamMocks.sendStreamRequest).toHaveBeenCalled())
+  const streamCall = streamMocks.sendStreamRequest.mock.calls.at(-1)
+  if (!streamCall) throw new Error('stream call not found')
+  const [, payload, onUpdate, onComplete] = streamCall as [
+    string,
+    ChatCompletionRequest,
+    (type: 'reasoning' | 'content', chunk: string) => void,
+    (usage?: ChatCompletionUsage) => void,
+    (error: string, errorCode?: string) => void,
+  ]
+
+  expect(apiMocks.searchWeb).toHaveBeenCalledWith(
+    'What is the latest Go release?',
+    expect.any(AbortSignal)
+  )
+  expect(JSON.stringify(payload.messages)).toContain('https://go.dev/dl/')
+  expect(payload).not.toHaveProperty('tools')
+
+  act(() => {
+    onUpdate('reasoning', 'Checking the official download page.')
+    onUpdate('content', 'Go 1.25 is available.')
+    onComplete()
+  })
+
+  const assistantMessage = result.current.messages.at(-1)
+  expect(assistantMessage?.reasoning?.content).toBe(
+    'Checking the official download page.'
+  )
+  expect(assistantMessage?.versions[0]?.content).toBe('Go 1.25 is available.')
+  expect(assistantMessage?.sources).toEqual([
+    { href: 'https://go.dev/dl/', title: 'Go Downloads' },
+  ])
 })

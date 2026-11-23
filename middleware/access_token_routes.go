@@ -310,6 +310,7 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 
 	// router/relay-router.go
 	"POST /pg/chat/completions": accessTokenSessionRule,
+	"POST /pg/tools/search":     accessTokenSessionRule,
 }
 
 var (

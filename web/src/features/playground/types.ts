@@ -119,7 +119,6 @@ export interface ChatCompletionRequest {
   group?: string
   messages: ChatCompletionMessage[]
   stream: boolean
-  tools?: ChatCompletionTool[]
   reasoning_effort?: Exclude<ReasoningEffort, ''>
   stream_options?: {
     include_usage: boolean
@@ -132,9 +131,10 @@ export interface ChatCompletionRequest {
   seed?: number
 }
 
-export interface ChatCompletionTool {
-  type: string
-  name?: string
+export interface WebSearchResult {
+  title: string
+  url: string
+  snippet?: string
 }
 
 export interface ChatCompletionChunk {
