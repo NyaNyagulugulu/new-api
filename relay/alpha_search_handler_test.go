@@ -95,12 +95,10 @@ func (*recordedSettlement) Reserve(int) error        { return nil }
 func (*recordedSettlement) ReserveBeforeSubmit(int) error { return nil }
 
 // /v1/tools/search and /v1/tools/fetch follow /v1/alpha/search: the raw body
-// reaches /v1/tools/* unchanged and the response returns unchanged. With only
-// the built-in prices, a response DeepSeek bills (results, page content)
-// settles one call at the routing name's request price and no tokens, an
-// empty one releases the reservation, an upstream error keeps its status, and
-// a channel that cannot relay the endpoint fails retryably without sending
-// anything.
+// reaches /v1/tools/* unchanged and the response returns unchanged. DeepSeek
+// tool requests are free in this deployment. WebChat search also releases its
+// reservation without writing a model usage log; an upstream error keeps its
+// status, and a channel that cannot relay the endpoint fails retryably.
 func TestDeepSeekToolsHelper(t *testing.T) {
 	service.InitHttpClient()
 	gin.SetMode(gin.TestMode)
@@ -108,7 +106,7 @@ func TestDeepSeekToolsHelper(t *testing.T) {
 	common.BatchUpdateEnabled, common.LogConsumeEnabled = true, false
 	t.Cleanup(func() { common.BatchUpdateEnabled, common.LogConsumeEnabled = batch, logConsume })
 
-	const search, fetch = "/v1/tools/search", "/v1/tools/fetch"
+	const search, fetch, playgroundSearch = "/v1/tools/search", "/v1/tools/fetch", "/pg/tools/search"
 	const results = `{"results":[{"title":"DeepSeek","url":"https://deepseek.com/","rerank_score":2.1}]}`
 	tests := []struct {
 		name, path, body, response string
@@ -117,16 +115,18 @@ func TestDeepSeekToolsHelper(t *testing.T) {
 		refunded                   bool
 	}{
 		{name: "search with results", path: search, body: `{"query":"deepseek","count":2,"future_field":{"nested":true}}`,
-			response: results, channelType: constant.ChannelTypeDeepSeek, status: http.StatusOK, settled: []int{375}},
+			response: results, channelType: constant.ChannelTypeDeepSeek, status: http.StatusOK, settled: []int{0}},
 		{name: "search without results", path: search, body: `{"query":"site:none.invalid deepseek"}`,
 			response: `{"results":[]}`, channelType: constant.ChannelTypeDeepSeek, status: http.StatusOK, refunded: true},
 		{name: "fetch with page content", path: fetch, body: `{"url":"https://example.com/"}`,
-			response: `{"title":"Example Domain","content":"# Example Domain"}`, channelType: constant.ChannelTypeDeepSeek, status: http.StatusOK, settled: []int{375}},
+			response: `{"title":"Example Domain","content":"# Example Domain"}`, channelType: constant.ChannelTypeDeepSeek, status: http.StatusOK, settled: []int{0}},
 		{name: "fetch failure keeps its status", path: fetch, body: `{"url":"https://example.com/missing"}`,
 			response:    `{"error":{"message":"failed to fetch URL","type":"not_found_error","param":null,"code":"invalid_request_error"}}`,
 			channelType: constant.ChannelTypeDeepSeek, status: http.StatusNotFound},
 		{name: "search through a New API channel", path: search, body: `{"query":"deepseek"}`,
-			response: results, channelType: constant.ChannelTypeNewAPI, status: http.StatusOK, settled: []int{375}},
+			response: results, channelType: constant.ChannelTypeNewAPI, status: http.StatusOK, settled: []int{0}},
+		{name: "web chat search is not a model usage event", path: playgroundSearch, body: `{"query":"deepseek"}`,
+			response: results, channelType: constant.ChannelTypeDeepSeek, status: http.StatusOK, refunded: true},
 		{name: "channel without the endpoint", path: search, body: `{"query":"deepseek"}`, channelType: constant.ChannelTypeOpenAI},
 	}
 	for _, tc := range tests {
@@ -145,7 +145,11 @@ func TestDeepSeekToolsHelper(t *testing.T) {
 			c, _ := gin.CreateTestContext(recorder)
 			c.Request = httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
 			c.Request.Header.Set("Content-Type", "application/json")
-			routingName := map[string]string{search: constant.DeepSeekSearchModel, fetch: constant.DeepSeekFetchModel}[tc.path]
+			routingName := map[string]string{
+				search:           constant.DeepSeekSearchModel,
+				fetch:            constant.DeepSeekFetchModel,
+				playgroundSearch: constant.DeepSeekSearchModel,
+			}[tc.path]
 			common.SetContextKey(c, constant.ContextKeyOriginalModel, routingName)
 			common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
 			common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
@@ -159,7 +163,7 @@ func TestDeepSeekToolsHelper(t *testing.T) {
 			require.NoError(t, err)
 			info.BillingRequestInput = &billingexpr.RequestInput{Body: []byte(tc.body)}
 			_, err = helper.ModelPriceHelper(c, info, 0, request.GetTokenCountMeta())
-			require.NoError(t, err, "the routing name is priced out of the box")
+			require.NoError(t, err, "the routing name is configured out of the box")
 			settlement := &recordedSettlement{}
 			info.Billing = settlement
 
@@ -170,7 +174,11 @@ func TestDeepSeekToolsHelper(t *testing.T) {
 				assert.Empty(t, gotPath)
 				return
 			}
-			assert.Equal(t, tc.path, gotPath)
+			wantUpstreamPath := tc.path
+			if tc.path == playgroundSearch {
+				wantUpstreamPath = search
+			}
+			assert.Equal(t, wantUpstreamPath, gotPath)
 			assert.Equal(t, tc.body, string(gotBody))
 			assert.Equal(t, tc.settled, settlement.settled)
 			assert.Equal(t, tc.refunded, settlement.refunded)

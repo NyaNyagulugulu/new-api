@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
@@ -102,6 +103,16 @@ func DeepSeekToolsHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIErr
 		return types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError, types.ErrOptionWithSkipRetry())
 	}
 	service.IOCopyBytesGracefully(c, httpResp, responseBody)
+
+	// WebChat search is an internal capability and is not exposed as a model
+	// usage event. Its request cost is already zero, so release the reservation
+	// without writing a consume log.
+	if strings.HasPrefix(c.Request.URL.Path, "/pg/tools/search") {
+		if info.Billing != nil {
+			info.Billing.Refund(c)
+		}
+		return nil
+	}
 
 	// DeepSeek bills a successful request only when it returns something: a
 	// non-empty results array for Search, page content for Fetch. A billable
