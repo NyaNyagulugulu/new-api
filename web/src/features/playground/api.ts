@@ -187,7 +187,7 @@ export async function searchWeb(
 export async function getMemorySettings(): Promise<MemorySettings> {
   const res = await api.get(API_ENDPOINTS.MEMORY_SETTINGS)
   const data = requireServerSuccess(res.data)
-  return data as MemorySettings
+  return data.data as MemorySettings
 }
 
 export async function searchUserMemories(
@@ -206,7 +206,7 @@ export async function searchUserMemories(
     }
   )
   const data = requireServerSuccess(res.data)
-  return Array.isArray(data) ? (data as UserMemory[]) : []
+  return Array.isArray(data.data) ? (data.data as UserMemory[]) : []
 }
 
 export async function saveUserMemories(
