@@ -36,6 +36,9 @@ export const playgroundConfigSchema = z.object({
   presence_penalty: z.number().optional(),
   seed: z.number().nullable().optional(),
   stream: z.boolean().optional(),
+  reasoningEffort: z
+    .enum(['', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+    .optional(),
 })
 
 export const parameterEnabledSchema = z.object({
@@ -93,6 +96,9 @@ const messageUsageSchema = z.object({
   audioTokens: z.number(),
   model: z.string().optional(),
   group: z.string().optional(),
+  reasoningEffort: z
+    .enum(['', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+    .optional(),
   reportedCostUSD: z.number().optional(),
 })
 

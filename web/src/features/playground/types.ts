@@ -23,6 +23,16 @@ export type MessageStatus = 'loading' | 'streaming' | 'complete' | 'error'
 
 export type PlaygroundMessageLayoutMode = 'alternating' | 'left'
 
+export type ReasoningEffort =
+  | ''
+  | 'none'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max'
+
 export interface MessageAttachment {
   id: string
   kind: 'image' | 'file'
@@ -48,6 +58,7 @@ export interface MessageUsage {
   audioTokens: number
   model?: string
   group?: string
+  reasoningEffort?: ReasoningEffort
   reportedCostUSD?: number
 }
 
@@ -107,6 +118,7 @@ export interface ChatCompletionRequest {
   group?: string
   messages: ChatCompletionMessage[]
   stream: boolean
+  reasoning_effort?: Exclude<ReasoningEffort, ''>
   stream_options?: {
     include_usage: boolean
   }
@@ -191,6 +203,7 @@ export interface PlaygroundConfig {
   presence_penalty: number
   seed: number | null
   stream: boolean
+  reasoningEffort: ReasoningEffort
 }
 
 export interface ParameterEnabled {

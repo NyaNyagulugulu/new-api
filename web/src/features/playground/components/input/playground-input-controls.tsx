@@ -32,7 +32,8 @@ import {
 } from '@/components/ui/tooltip'
 
 import { getInputControlState } from '../../lib'
-import type { GroupOption, ModelOption } from '../../types'
+import type { GroupOption, ModelOption, ReasoningEffort } from '../../types'
+import { PlaygroundReasoningSelector } from './playground-reasoning-selector'
 
 type PlaygroundInputControlsProps = {
   disabled?: boolean
@@ -45,6 +46,8 @@ type PlaygroundInputControlsProps = {
   onGroupChange: (value: string) => void
   onModelChange: (value: string) => void
   onStop?: () => void
+  onReasoningEffortChange: (value: ReasoningEffort) => void
+  reasoningEffort: ReasoningEffort
   text: string
   tools: ReactNode
 }
@@ -60,6 +63,8 @@ export function PlaygroundInputControls({
   onGroupChange,
   onModelChange,
   onStop,
+  onReasoningEffortChange,
+  reasoningEffort,
   text,
   tools,
 }: PlaygroundInputControlsProps) {
@@ -139,6 +144,11 @@ export function PlaygroundInputControls({
               <p>{t('Add photos or files')}</p>
             </TooltipContent>
           </Tooltip>
+          <PlaygroundReasoningSelector
+            disabled={disabled}
+            onValueChange={onReasoningEffortChange}
+            value={reasoningEffort}
+          />
           {tools}
         </div>
         <div className='flex items-center gap-1.5 md:hidden'>

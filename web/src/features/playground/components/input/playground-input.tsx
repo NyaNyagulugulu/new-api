@@ -45,6 +45,7 @@ import type {
   ParameterEnabled,
   PlaygroundConfig,
   MessageAttachment,
+  ReasoningEffort,
 } from '../../types'
 import { PlaygroundInputControls } from './playground-input-controls'
 import { PlaygroundParameterPanel } from './playground-parameter-panel'
@@ -85,6 +86,7 @@ interface PlaygroundInputProps {
     key: keyof ParameterEnabled,
     value: boolean
   ) => void
+  onReasoningEffortChange: (value: ReasoningEffort) => void
   parameterEnabled: ParameterEnabled
 }
 
@@ -103,6 +105,7 @@ export function PlaygroundInput({
   onGroupChange,
   onConfigChange,
   onParameterEnabledChange,
+  onReasoningEffortChange,
   parameterEnabled,
 }: PlaygroundInputProps) {
   const { t } = useTranslation()
@@ -162,7 +165,9 @@ export function PlaygroundInput({
             modelValue={modelValue}
             onGroupChange={onGroupChange}
             onModelChange={onModelChange}
+            onReasoningEffortChange={onReasoningEffortChange}
             onStop={onStop}
+            reasoningEffort={config.reasoningEffort}
             text={text}
             tools={
               <PlaygroundParameterPanel

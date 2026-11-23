@@ -25,6 +25,7 @@ import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
+import { REASONING_EFFORT_OPTIONS } from '../../constants'
 import { estimateMessageUsageCostUSD, type MessageAlignment } from '../../lib'
 import type { Message } from '../../types'
 
@@ -76,6 +77,11 @@ export function MessageMetadata(props: MessageMetadataProps) {
   const estimatedCostUSD = usage
     ? estimateMessageUsageCostUSD(usage, pricingModel, groupRatio)
     : null
+  const reasoningEffortLabel = t(
+    REASONING_EFFORT_OPTIONS.find(
+      (option) => option.value === usage?.reasoningEffort
+    )?.labelKey ?? 'Auto'
+  )
 
   if (!messageTime && !duration && !usage) {
     return null
@@ -94,6 +100,10 @@ export function MessageMetadata(props: MessageMetadataProps) {
         {
           label: t('Total tokens'),
           value: formatNumber(usage.totalTokens, locale),
+        },
+        {
+          label: t('Reasoning effort'),
+          value: reasoningEffortLabel,
         },
         ...(usage.cachedTokens > 0
           ? [
@@ -142,10 +152,10 @@ export function MessageMetadata(props: MessageMetadataProps) {
               ? t('Cost unavailable')
               : formatBillingCurrencyFromUSD(estimatedCostUSD, {
                   abbreviate: false,
-                  digitsLarge: 3,
-                  digitsSmall: 3,
+                  digitsLarge: 6,
+                  digitsSmall: 6,
                   locale,
-                  minimumNonZero: 0.00000001,
+                  minimumNonZero: 0.000001,
                 }),
         },
       ]

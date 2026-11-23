@@ -223,7 +223,8 @@ export function useChatHandler({
                   usage: normalizeMessageUsage(
                     usage,
                     config.model,
-                    config.group
+                    config.group,
+                    config.reasoningEffort
                   ),
                 }
               : {}),
@@ -234,7 +235,13 @@ export function useChatHandler({
         })
       })
     },
-    [config.group, config.model, flushStreamUpdates, onMessageUpdate]
+    [
+      config.group,
+      config.model,
+      config.reasoningEffort,
+      flushStreamUpdates,
+      onMessageUpdate,
+    ]
   )
 
   // Handle stream error
@@ -333,7 +340,8 @@ export function useChatHandler({
               message,
               response,
               config.model,
-              config.group
+              config.group,
+              config.reasoningEffort
             )
 
             return updatedMessage ?? message

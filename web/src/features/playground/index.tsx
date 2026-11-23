@@ -236,6 +236,9 @@ export function Playground() {
             onGroupChange={(value) => updateConfig('group', value)}
             onModelChange={(value) => updateConfig('model', value)}
             onParameterEnabledChange={updateParameterEnabled}
+            onReasoningEffortChange={(value) =>
+              updateConfig('reasoningEffort', value)
+            }
             onStop={stopGeneration}
             onSubmit={handleSendMessage}
             parameterEnabled={parameterEnabled}

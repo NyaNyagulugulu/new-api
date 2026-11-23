@@ -19,7 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 import { t } from 'i18next'
 
 import { ERROR_MESSAGES, MESSAGE_ROLES, MESSAGE_STATUS } from '../../constants'
-import type { ChatCompletionResponse, Message } from '../../types'
+import type {
+  ChatCompletionResponse,
+  Message,
+  ReasoningEffort,
+} from '../../types'
 import { parseThinkTags } from './message-reasoning-utils'
 import {
   completeAssistantTiming,
@@ -190,12 +194,13 @@ export function applyChatCompletionChoice(
   choice: ChatCompletionChoice,
   usage?: ChatCompletionResponse['usage'],
   model?: string,
-  group?: string
+  group?: string,
+  reasoningEffort?: ReasoningEffort
 ): Message {
   const completedMessage = usage
     ? {
         ...message,
-        usage: normalizeMessageUsage(usage, model, group),
+        usage: normalizeMessageUsage(usage, model, group, reasoningEffort),
       }
     : message
 
@@ -215,7 +220,8 @@ export function applyChatCompletionResponse(
   message: Message,
   response: ChatCompletionResponse,
   model?: string,
-  group?: string
+  group?: string,
+  reasoningEffort?: ReasoningEffort
 ): Message | null {
   const choice = response.choices?.[0]
 
@@ -228,7 +234,8 @@ export function applyChatCompletionResponse(
     choice,
     response.usage,
     model ?? response.model,
-    group
+    group,
+    reasoningEffort
   )
 }
 

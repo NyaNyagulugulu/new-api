@@ -16,7 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { PlaygroundConfig, ParameterEnabled } from './types'
+import type {
+  PlaygroundConfig,
+  ParameterEnabled,
+  ReasoningEffort,
+} from './types'
 
 // Message constants
 export const MESSAGE_ROLES = {
@@ -54,6 +58,7 @@ export const DEFAULT_CONFIG: PlaygroundConfig = {
   presence_penalty: 0,
   seed: null,
   stream: true,
+  reasoningEffort: '',
 }
 
 export const DEFAULT_PARAMETER_ENABLED: ParameterEnabled = {
@@ -64,6 +69,20 @@ export const DEFAULT_PARAMETER_ENABLED: ParameterEnabled = {
   presence_penalty: true,
   seed: false,
 }
+
+export const REASONING_EFFORT_OPTIONS: {
+  value: ReasoningEffort
+  labelKey: string
+}[] = [
+  { value: '', labelKey: 'Auto' },
+  { value: 'none', labelKey: 'None' },
+  { value: 'minimal', labelKey: 'Minimal' },
+  { value: 'low', labelKey: 'Low' },
+  { value: 'medium', labelKey: 'Medium' },
+  { value: 'high', labelKey: 'High' },
+  { value: 'xhigh', labelKey: 'Extra high' },
+  { value: 'max', labelKey: 'Maximum' },
+]
 
 // Storage keys
 export const STORAGE_KEYS = {

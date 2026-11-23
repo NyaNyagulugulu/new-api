@@ -22,7 +22,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { PricingModel } from '@/features/pricing/types'
 
-import type { ChatCompletionUsage, MessageUsage } from '../../types'
+import type {
+  ChatCompletionUsage,
+  MessageUsage,
+  ReasoningEffort,
+} from '../../types'
 
 function numberValue(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value)
@@ -43,7 +47,8 @@ function reportedCost(value: unknown): number | undefined {
 export function normalizeMessageUsage(
   usage: ChatCompletionUsage,
   model?: string,
-  group?: string
+  group?: string,
+  reasoningEffort?: ReasoningEffort
 ): MessageUsage {
   const promptDetails = usage.prompt_tokens_details
   const completionDetails = usage.completion_tokens_details
@@ -84,6 +89,7 @@ export function normalizeMessageUsage(
       numberValue(outputDetails?.audio_tokens),
     model,
     group,
+    reasoningEffort,
     reportedCostUSD: reportedCost(usage.cost),
   }
 }

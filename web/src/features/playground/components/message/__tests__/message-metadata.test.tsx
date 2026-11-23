@@ -58,6 +58,7 @@ const message: Message = {
     audioTokens: 0,
     model: 'gpt-test',
     group: 'default',
+    reasoningEffort: 'high',
   },
 }
 
@@ -67,6 +68,8 @@ beforeAll(() => {
     'Estimated cost': 'Estimated cost',
     'Input tokens': 'Input tokens',
     'Output tokens': 'Output tokens',
+    'Reasoning effort': 'Reasoning effort',
+    High: 'High',
     'Reasoning tokens': 'Reasoning tokens',
     'Response time: {{duration}}': 'Response time: {{duration}}',
     'Total tokens': 'Total tokens',
@@ -84,5 +87,7 @@ test('shows input, output, total, cached, reasoning tokens and estimated cost', 
   expect(screen.getByText('1,500')).toBeInTheDocument()
   expect(screen.getByText('Cached tokens:')).toBeInTheDocument()
   expect(screen.getByText('Reasoning tokens:')).toBeInTheDocument()
+  expect(screen.getByText('Reasoning effort:')).toBeInTheDocument()
+  expect(screen.getByText('High')).toBeInTheDocument()
   expect(screen.getByText('Estimated cost:')).toBeInTheDocument()
 })
