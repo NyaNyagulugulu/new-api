@@ -529,7 +529,11 @@ export function useChatHandler({
 
       if (query) {
         try {
-          searchResults = await searchWeb(query, abortController.signal)
+          searchResults = await searchWeb(
+            query,
+            config.group,
+            abortController.signal
+          )
         } catch (error: unknown) {
           if (abortController.signal.aborted) return
           const { errorCode, errorMessage } = parseRequestErrorDetails(error)
@@ -553,6 +557,7 @@ export function useChatHandler({
     },
     [
       config.stream,
+      config.group,
       handleStreamError,
       prepareGeneration,
       startNonStreamingChat,

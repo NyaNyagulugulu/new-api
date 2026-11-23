@@ -178,7 +178,6 @@ func TestGetModelRequestAssignsDeepSeekToolRoutingNames(t *testing.T) {
 		{"/v1/tools/fetch", `{"url":"https://example.com/"}`, constant.DeepSeekFetchModel},
 		{"/v1/tools/search", `{"query":"deepseek","model":"deepseek-flash"}`, constant.DeepSeekSearchModel},
 		{"/v1/tools/fetch", `{"url":"https://example.com/","model":"deepseek-v4-pro"}`, constant.DeepSeekFetchModel},
-		{"/pg/tools/search", `{"query":"latest Go release","count":5}`, constant.DeepSeekSearchModel},
 	} {
 		c, _ := gin.CreateTestContext(httptest.NewRecorder())
 		c.Request = httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))

@@ -127,3 +127,41 @@ func TestCacheGetRandomSatisfiedChannelUsesTokenAutoGroupsWhenGlobalAutoIsEmpty(
 	assert.Equal(t, "default", selectedGroup)
 	assert.Equal(t, "default", common.GetContextKeyString(ctx, constant.ContextKeyAutoGroup))
 }
+
+func TestSelectInternalSearchChannelDoesNotRequireModelAbility(t *testing.T) {
+	db := setupChannelSelectAutoGroupsTest(t)
+	priority := int64(10)
+	weight := uint(100)
+	require.NoError(t, db.Create(&model.Channel{
+		Id:       2201,
+		Type:     constant.ChannelTypeDeepSeek,
+		Key:      "search-key",
+		Status:   common.ChannelStatusEnabled,
+		Name:     "deepseek-search-capable",
+		Weight:   &weight,
+		Models:   "deepseek-v4.1-flash",
+		Group:    "default",
+		Priority: &priority,
+	}).Error)
+	require.NoError(t, db.Create(&model.Channel{
+		Id:       2202,
+		Type:     constant.ChannelTypeOpenAI,
+		Key:      "chat-key",
+		Status:   common.ChannelStatusEnabled,
+		Name:     "chat-only",
+		Weight:   &weight,
+		Models:   "gpt-4o",
+		Group:    "default",
+		Priority: &priority,
+	}).Error)
+
+	channel, selectedGroup, err := SelectInternalSearchChannel(
+		[]string{"default"},
+		[]int{constant.ChannelTypeDeepSeek},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, channel)
+	assert.Equal(t, 2201, channel.Id)
+	assert.Equal(t, "default", selectedGroup)
+	assert.NotContains(t, channel.GetModels(), constant.DeepSeekSearchModel)
+}

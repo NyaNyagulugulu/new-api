@@ -162,6 +162,7 @@ export async function deleteChatConversation(id: string): Promise<void> {
 
 export async function searchWeb(
   query: string,
+  group: string,
   signal?: AbortSignal
 ): Promise<WebSearchResult[]> {
   const res = await api.post(
@@ -173,6 +174,7 @@ export async function searchWeb(
     {
       signal,
       skipErrorHandler: true,
+      params: { group },
     } as Record<string, unknown>
   )
   return extractWebSearchResults(res.data)

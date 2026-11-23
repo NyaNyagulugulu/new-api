@@ -186,6 +186,7 @@ test('web search keeps the normal reasoning stream and attaches sources', async 
 
   expect(apiMocks.searchWeb).toHaveBeenCalledWith(
     'What is the latest Go release?',
+    result.current.config.group,
     expect.any(AbortSignal)
   )
   expect(JSON.stringify(payload.messages)).toContain('https://go.dev/dl/')

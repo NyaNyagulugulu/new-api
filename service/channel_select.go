@@ -50,6 +50,96 @@ type RetryParam struct {
 	resetNextTry bool
 }
 
+type internalSearchChannel struct {
+	channel *model.Channel
+	group   string
+}
+
+// SelectInternalSearchChannel selects a capability channel without requiring an
+// ability/model entry. Search is an internal tool, not a user-selectable model.
+func SelectInternalSearchChannel(
+	groups []string,
+	channelTypes []int,
+) (*model.Channel, string, error) {
+	if len(groups) == 0 || len(channelTypes) == 0 {
+		return nil, "", errors.New("no search groups or channel types configured")
+	}
+
+	groupOrder := make(map[string]int, len(groups))
+	for index, group := range groups {
+		groupOrder[group] = index
+	}
+	channelTypeSet := make(map[int]struct{}, len(channelTypes))
+	for _, channelType := range channelTypes {
+		channelTypeSet[channelType] = struct{}{}
+	}
+
+	channels, err := model.GetAllChannels(0, 0, true, true)
+	if err != nil {
+		return nil, "", err
+	}
+
+	candidates := make([]internalSearchChannel, 0)
+	var maxPriority int64
+	hasPriority := false
+	for _, channel := range channels {
+		if channel == nil || channel.Status != common.ChannelStatusEnabled {
+			continue
+		}
+		if _, ok := channelTypeSet[channel.Type]; !ok {
+			continue
+		}
+
+		selectedGroup := ""
+		selectedGroupOrder := len(groups)
+		for _, channelGroup := range channel.GetGroups() {
+			order, ok := groupOrder[channelGroup]
+			if ok && order < selectedGroupOrder {
+				selectedGroup = channelGroup
+				selectedGroupOrder = order
+			}
+		}
+		if selectedGroup == "" {
+			continue
+		}
+
+		priority := channel.GetPriority()
+		if !hasPriority || priority > maxPriority {
+			maxPriority = priority
+			hasPriority = true
+			candidates = candidates[:0]
+		}
+		if priority == maxPriority {
+			candidates = append(candidates, internalSearchChannel{
+				channel: channel,
+				group:   selectedGroup,
+			})
+		}
+	}
+	if len(candidates) == 0 {
+		return nil, "", errors.New("no available search channel")
+	}
+
+	totalWeight := 0
+	for _, candidate := range candidates {
+		totalWeight += candidate.channel.GetWeight()
+	}
+	if totalWeight <= 0 {
+		selected := candidates[common.GetRandomInt(len(candidates))]
+		return selected.channel, selected.group, nil
+	}
+
+	targetWeight := common.GetRandomInt(totalWeight)
+	for _, candidate := range candidates {
+		targetWeight -= candidate.channel.GetWeight()
+		if targetWeight < 0 {
+			return candidate.channel, candidate.group, nil
+		}
+	}
+	selected := candidates[len(candidates)-1]
+	return selected.channel, selected.group, nil
+}
+
 func (p *RetryParam) GetRetry() int {
 	if p.Retry == nil {
 		return 0
