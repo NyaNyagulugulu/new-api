@@ -23,6 +23,7 @@ import { ClaudeSettingsCard } from './claude-settings-card'
 import { GeminiSettingsCard } from './gemini-settings-card'
 import { GlobalSettingsCard } from './global-settings-card'
 import { GrokSettingsCard } from './grok-settings-card'
+import { MemorySettingsCard } from './memory-settings-card'
 
 function formatJsonForEditor(value: string, fallback: string) {
   const raw = (value ?? '').toString().trim()
@@ -64,6 +65,31 @@ const MODELS_SECTIONS = [
     ),
   },
 
+  {
+    id: 'memory',
+    titleKey: 'Long-term Memory',
+    build: (settings: ModelSettings) => (
+      <MemorySettingsCard
+        defaultValues={{
+          'memory_setting.enabled': settings['memory_setting.enabled'],
+          'memory_setting.auto_extract':
+            settings['memory_setting.auto_extract'],
+          'memory_setting.extract_every_rounds':
+            settings['memory_setting.extract_every_rounds'],
+          'memory_setting.extract_window_messages':
+            settings['memory_setting.extract_window_messages'],
+          'memory_setting.retrieve_limit':
+            settings['memory_setting.retrieve_limit'],
+          'memory_setting.max_injected_chars':
+            settings['memory_setting.max_injected_chars'],
+          'memory_setting.min_importance':
+            settings['memory_setting.min_importance'],
+          'memory_setting.retention_days':
+            settings['memory_setting.retention_days'],
+        }}
+      />
+    ),
+  },
   {
     id: 'gemini',
     titleKey: 'Gemini',

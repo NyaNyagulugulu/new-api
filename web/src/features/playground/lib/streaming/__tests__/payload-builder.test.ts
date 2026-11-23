@@ -20,6 +20,7 @@ import { expect, test } from 'vitest'
 
 import { DEFAULT_CONFIG, DEFAULT_PARAMETER_ENABLED } from '../../../constants'
 import type { Message } from '../../../types'
+import { createContextSummaryMessage } from '../../chat/context-compaction'
 import { buildChatCompletionPayload } from '../payload-builder'
 
 const messages: Message[] = [
@@ -49,4 +50,26 @@ test('omits reasoning effort when automatic selection is active', () => {
   )
 
   expect(payload).not.toHaveProperty('reasoning_effort')
+})
+
+test('sends only the latest context summary and newer messages', () => {
+  const summary = createContextSummaryMessage('Earlier conversation summary', 2)
+  const payload = buildChatCompletionPayload(
+    [
+      messages[0],
+      summary,
+      {
+        key: 'user-2',
+        from: 'user',
+        versions: [{ id: 'version-2', content: 'Latest question' }],
+      },
+    ],
+    DEFAULT_CONFIG,
+    DEFAULT_PARAMETER_ENABLED
+  )
+
+  expect(payload.messages).toEqual([
+    { role: 'system', content: 'Earlier conversation summary' },
+    { role: 'user', content: 'Latest question' },
+  ])
 })

@@ -106,6 +106,20 @@ export function PlaygroundChat({
   }, [editingKey, messages])
 
   let chatContent = messages.map((message, messageIndex) => {
+    if (message.isContextSummary) {
+      return (
+        <div
+          className='text-muted-foreground flex items-center gap-3 py-3 text-xs'
+          key={message.key}
+          role='status'
+        >
+          <span className='bg-border h-px flex-1' />
+          <span>{t('Earlier conversation summarized')}</span>
+          <span className='bg-border h-px flex-1' />
+        </div>
+      )
+    }
+
     const { alwaysShowActions, content, isEditing } = getChatMessageRenderState(
       messages,
       message,

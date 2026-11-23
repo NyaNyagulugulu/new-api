@@ -22,6 +22,7 @@ import type {
   PlaygroundConfig,
   ParameterEnabled,
 } from '../../types'
+import { getEffectiveContextMessages } from '../chat/context-compaction'
 import { formatMessageForAPI, isValidMessage } from '../message/message-utils'
 
 /**
@@ -33,7 +34,7 @@ export function buildChatCompletionPayload(
   parameterEnabled: ParameterEnabled
 ): ChatCompletionRequest {
   // Filter and format valid messages
-  const processedMessages = messages
+  const processedMessages = getEffectiveContextMessages(messages)
     .filter(isValidMessage)
     .map(formatMessageForAPI)
 

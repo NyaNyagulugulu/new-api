@@ -66,6 +66,7 @@ export interface Message {
   key: string
   from: MessageRole
   versions: MessageVersion[]
+  isContextSummary?: boolean
   model?: string
   createdAt?: number
   startedAt?: number
@@ -135,6 +136,39 @@ export interface WebSearchResult {
   title: string
   url: string
   snippet?: string
+}
+
+export interface MemorySettings {
+  enabled: boolean
+  auto_extract: boolean
+  extract_every_rounds: number
+  extract_window_messages: number
+  retrieve_limit: number
+  max_injected_chars: number
+  min_importance: number
+  retention_days: number
+}
+
+export interface UserMemory {
+  id: number
+  content: string
+  keywords: string
+  category: string
+  importance: number
+  conversation_id: string
+  source_key: string
+  status: string
+  created_at: number
+  updated_at: number
+}
+
+export interface UserMemoryInput {
+  content: string
+  keywords: string[]
+  category: string
+  importance: number
+  conversation_id: string
+  source_key: string
 }
 
 export interface ChatCompletionChunk {

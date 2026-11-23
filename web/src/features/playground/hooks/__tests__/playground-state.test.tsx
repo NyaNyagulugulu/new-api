@@ -38,6 +38,7 @@ const apiMocks = vi.hoisted(() => ({
   deleteChatConversation: vi.fn(),
   getChatConversations: vi.fn(),
   searchWeb: vi.fn(),
+  searchUserMemories: vi.fn(),
   sendChatCompletion: vi.fn(),
   syncChatConversations: vi.fn(),
 }))
@@ -46,6 +47,7 @@ vi.mock('../../api', () => ({
   deleteChatConversation: apiMocks.deleteChatConversation,
   getChatConversations: apiMocks.getChatConversations,
   searchWeb: apiMocks.searchWeb,
+  searchUserMemories: apiMocks.searchUserMemories,
   sendChatCompletion: apiMocks.sendChatCompletion,
   syncChatConversations: apiMocks.syncChatConversations,
 }))
@@ -66,6 +68,7 @@ beforeEach(() => {
   localStorage.clear()
   apiMocks.getChatConversations.mockResolvedValue([])
   apiMocks.searchWeb.mockResolvedValue([])
+  apiMocks.searchUserMemories.mockResolvedValue([])
   apiMocks.syncChatConversations.mockResolvedValue([])
   apiMocks.deleteChatConversation.mockResolvedValue(undefined)
   useAuthStore.getState().auth.reset()
@@ -102,10 +105,11 @@ test('stream updates target an existing background session', async () => {
   )
 })
 
-function usePlaygroundHarness() {
+function usePlaygroundHarness(contextWindowTokens?: number) {
   const state = usePlaygroundState()
   const chat = useChatHandler({
     config: state.config,
+    contextWindowTokens,
     parameterEnabled: state.parameterEnabled,
     onMessageUpdate: state.updateMessages,
   })
@@ -206,4 +210,73 @@ test('web search keeps the normal reasoning stream and attaches sources', async 
   expect(assistantMessage?.sources).toEqual([
     { href: 'https://go.dev/dl/', title: 'Go Downloads' },
   ])
+})
+
+test('automatically summarizes older context before starting the answer', async () => {
+  apiMocks.sendChatCompletion.mockResolvedValue({
+    id: 'chatcmpl-summary',
+    object: 'chat.completion',
+    created: 0,
+    model: 'test-model',
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: 'assistant',
+          content: 'Earlier messages discussed the release plan.',
+        },
+        finish_reason: 'stop',
+      },
+    ],
+  })
+  const { result } = renderHook(() => usePlaygroundHarness(5_000))
+  await waitFor(() => expect(result.current.isLoadingMessages).toBe(false))
+
+  let sessionId = ''
+  let messages: Message[] = []
+  act(() => {
+    sessionId = result.current.ensureActiveSessionId()
+    messages = [
+      {
+        key: 'old-user',
+        from: 'user',
+        versions: [{ id: 'old-user-version', content: 'a'.repeat(20000) }],
+      },
+      {
+        key: 'old-assistant',
+        from: 'assistant',
+        versions: [{ id: 'old-assistant-version', content: 'b'.repeat(20000) }],
+        status: 'complete',
+      },
+      {
+        key: 'recent-user',
+        from: 'user',
+        versions: [{ id: 'recent-user-version', content: 'Recent question' }],
+      },
+      ...appendUserMessagePair([], 'Latest question'),
+    ]
+    result.current.updateMessages(messages, sessionId)
+    result.current.sendChat(messages, sessionId)
+  })
+
+  await waitFor(() => expect(apiMocks.sendChatCompletion).toHaveBeenCalled())
+  await waitFor(() =>
+    expect(result.current.messages.some((message) => message.isContextSummary))
+  )
+
+  const streamCall = streamMocks.sendStreamRequest.mock.calls.at(-1)
+  if (!streamCall) throw new Error('stream call not found')
+  const [, payload] = streamCall as [
+    string,
+    ChatCompletionRequest,
+    (type: 'reasoning' | 'content', chunk: string) => void,
+    (usage?: ChatCompletionUsage) => void,
+    (error: string, errorCode?: string) => void,
+  ]
+
+  expect(payload.messages[0]).toMatchObject({
+    role: 'system',
+    content: 'Earlier messages discussed the release plan.',
+  })
+  expect(JSON.stringify(payload.messages)).not.toContain('a'.repeat(100))
 })

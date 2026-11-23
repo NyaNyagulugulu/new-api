@@ -29,6 +29,9 @@ import type {
   ChatCompletionResponse,
   ModelOption,
   GroupOption,
+  MemorySettings,
+  UserMemory,
+  UserMemoryInput,
   WebSearchResult,
 } from './types'
 
@@ -178,4 +181,30 @@ export async function searchWeb(
     } as Record<string, unknown>
   )
   return extractWebSearchResults(res.data)
+}
+
+export async function getMemorySettings(): Promise<MemorySettings> {
+  const res = await api.get(API_ENDPOINTS.MEMORY_SETTINGS)
+  const data = requireServerSuccess(res.data)
+  return data as MemorySettings
+}
+
+export async function searchUserMemories(
+  query: string,
+  limit: number,
+  signal?: AbortSignal
+): Promise<UserMemory[]> {
+  const res = await api.get(API_ENDPOINTS.MEMORIES, {
+    params: { q: query, limit },
+    signal,
+  })
+  const data = requireServerSuccess(res.data)
+  return Array.isArray(data) ? (data as UserMemory[]) : []
+}
+
+export async function saveUserMemories(
+  memories: UserMemoryInput[]
+): Promise<void> {
+  const res = await api.post(API_ENDPOINTS.MEMORIES, { memories })
+  requireServerSuccess(res.data)
 }

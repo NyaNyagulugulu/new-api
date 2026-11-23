@@ -40,6 +40,10 @@ vi.mock('@tanstack/react-router', () => ({
   }),
 }))
 
+vi.mock('@/features/pricing/hooks/use-pricing-data', () => ({
+  usePricingData: () => ({ models: [] }),
+}))
+
 vi.mock('@/features/playground/components/chat/playground-chat', () => ({
   PlaygroundChat: () => <div data-testid='web-chat' />,
 }))
@@ -67,6 +71,8 @@ vi.mock('@/features/playground/components/input/playground-input', () => ({
 
 vi.mock('../hooks', () => ({
   useAiChatTitles: vi.fn(),
+  useLongTermMemoryReflection: vi.fn(),
+  useMemorySettings: () => undefined,
   useChatHandler: () => ({
     sendChat: vi.fn(),
     stopGeneration: mocks.stopGeneration,

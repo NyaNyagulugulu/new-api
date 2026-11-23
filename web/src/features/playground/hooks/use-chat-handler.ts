@@ -21,34 +21,46 @@ import { useTranslation } from 'react-i18next'
 
 import { handleServerError } from '@/lib/handle-server-error'
 
-import { searchWeb, sendChatCompletion } from '../api'
+import { searchUserMemories, searchWeb, sendChatCompletion } from '../api'
 import { ERROR_MESSAGES } from '../constants'
 import {
   addWebSearchContext,
+  addLongTermMemoryContext,
   applyStreamingChunk,
   buildChatCompletionPayload,
+  buildContextSummaryRequestMessages,
   applyChatCompletionResponse,
   completeAssistantMessage,
+  CONTEXT_COMPACTION_MAX_SUMMARY_TOKENS,
+  createContextSummaryMessage,
   getWebSearchQuery,
   hasChatCompletionChoice,
+  insertContextSummaryMessage,
   isAssistantMessageFinal,
   isAssistantMessagePending,
   normalizeMessageUsage,
   parseRequestErrorDetails,
+  planContextCompaction,
+  shouldCompactContext,
   updateAssistantMessageWithError,
   updateLastAssistantMessage,
 } from '../lib'
 import type {
+  ChatCompletionResponse,
   ChatCompletionUsage,
   Message,
+  MemorySettings,
   PlaygroundConfig,
   ParameterEnabled,
+  UserMemory,
   WebSearchResult,
 } from '../types'
 import { useStreamRequest } from './use-stream-request'
 
 interface UseChatHandlerOptions {
   config: PlaygroundConfig
+  contextWindowTokens?: number
+  memorySettings?: MemorySettings
   parameterEnabled: ParameterEnabled
   onMessageUpdate: (
     updater: (prev: Message[]) => Message[],
@@ -69,6 +81,16 @@ type ActiveGeneration = {
   pending: PendingStreamChunks
   sessionId?: string
   timer: number | null
+}
+
+function getChatCompletionText(response: ChatCompletionResponse): string {
+  const message = response.choices?.[0]?.message
+  return (
+    message?.content ||
+    message?.reasoning_content ||
+    message?.reasoning ||
+    ''
+  ).trim()
 }
 
 function mergePendingStreamChunk(
@@ -110,6 +132,8 @@ function applyPendingStreamChunks(
  */
 export function useChatHandler({
   config,
+  contextWindowTokens,
+  memorySettings,
   parameterEnabled,
   onMessageUpdate,
 }: UseChatHandlerOptions) {
@@ -385,10 +409,15 @@ export function useChatHandler({
       messages: Message[],
       sessionId: string | undefined,
       generation: number,
-      searchResults: WebSearchResult[] = []
+      searchResults: WebSearchResult[] = [],
+      memoryResults: UserMemory[] = []
     ) => {
       const payload = addWebSearchContext(
-        buildChatCompletionPayload(messages, config, parameterEnabled),
+        addLongTermMemoryContext(
+          buildChatCompletionPayload(messages, config, parameterEnabled),
+          memoryResults,
+          memorySettings?.max_injected_chars ?? 0
+        ),
         searchResults
       )
       if (searchResults.length > 0) {
@@ -418,17 +447,10 @@ export function useChatHandler({
       handleStreamError,
       handleStreamUpdate,
       parameterEnabled,
+      memorySettings?.max_injected_chars,
       onMessageUpdate,
       sendStreamRequest,
     ]
-  )
-
-  const sendStreamingChat = useCallback(
-    (messages: Message[], sessionId?: string) => {
-      const generation = prepareGeneration(sessionId)
-      startStreamingChat(messages, sessionId, generation)
-    },
-    [prepareGeneration, startStreamingChat]
   )
 
   const startNonStreamingChat = useCallback(
@@ -436,7 +458,8 @@ export function useChatHandler({
       messages: Message[],
       sessionId: string | undefined,
       generation: number,
-      searchResults: WebSearchResult[] = []
+      searchResults: WebSearchResult[] = [],
+      memoryResults: UserMemory[] = []
     ) => {
       const request = generationsRef.current.get(generation)
       if (!request) return
@@ -444,7 +467,11 @@ export function useChatHandler({
       const abortController = new AbortController()
       request.abortController = abortController
       const payload = addWebSearchContext(
-        buildChatCompletionPayload(messages, config, parameterEnabled),
+        addLongTermMemoryContext(
+          buildChatCompletionPayload(messages, config, parameterEnabled),
+          memoryResults,
+          memorySettings?.max_injected_chars ?? 0
+        ),
         searchResults
       )
       if (searchResults.length > 0) {
@@ -504,19 +531,12 @@ export function useChatHandler({
       handleStreamError,
       onMessageUpdate,
       parameterEnabled,
+      memorySettings?.max_injected_chars,
       removeGeneration,
     ]
   )
 
-  const sendNonStreamingChat = useCallback(
-    (messages: Message[], sessionId?: string) => {
-      const generation = prepareGeneration(sessionId)
-      void startNonStreamingChat(messages, sessionId, generation)
-    },
-    [prepareGeneration, startNonStreamingChat]
-  )
-
-  const sendWebSearchChat = useCallback(
+  const sendManagedChat = useCallback(
     async (messages: Message[], sessionId?: string) => {
       const generation = prepareGeneration(sessionId)
       const request = generationsRef.current.get(generation)
@@ -524,41 +544,143 @@ export function useChatHandler({
 
       const abortController = new AbortController()
       request.abortController = abortController
+      let preparedMessages = messages
       let searchResults: WebSearchResult[] = []
-      const query = getWebSearchQuery(messages)
+      let memoryResults: UserMemory[] = []
 
-      if (query) {
-        try {
-          searchResults = await searchWeb(
-            query,
-            config.group,
-            abortController.signal
+      try {
+        if (
+          shouldCompactContext(
+            preparedMessages,
+            contextWindowTokens ?? 0,
+            parameterEnabled.max_tokens ? config.max_tokens : 0,
+            (config.webSearch ? 4_000 : 0) +
+              (memorySettings?.enabled
+                ? Math.ceil((memorySettings.max_injected_chars ?? 0) / 4)
+                : 0)
           )
-        } catch (error: unknown) {
-          if (abortController.signal.aborted) return
-          const { errorCode, errorMessage } = parseRequestErrorDetails(error)
-          handleStreamError(generation, errorMessage, errorCode)
+        ) {
+          const compaction = planContextCompaction(
+            preparedMessages,
+            contextWindowTokens ?? 0
+          )
+          if (compaction) {
+            const response = await sendChatCompletion(
+              {
+                model: config.model,
+                group: config.group,
+                messages: buildContextSummaryRequestMessages(
+                  compaction.sourceMessages
+                ),
+                stream: false,
+                max_tokens: CONTEXT_COMPACTION_MAX_SUMMARY_TOKENS,
+              },
+              abortController.signal
+            )
+            if (
+              abortController.signal.aborted ||
+              !generationsRef.current.has(generation)
+            ) {
+              return
+            }
+            if (!hasChatCompletionChoice(response)) {
+              handleStreamError(generation, ERROR_MESSAGES.API_REQUEST_ERROR)
+              return
+            }
+
+            const summary = getChatCompletionText(response)
+            if (!summary) {
+              handleStreamError(generation, ERROR_MESSAGES.API_REQUEST_ERROR)
+              return
+            }
+            const summaryMessage = createContextSummaryMessage(summary)
+            onMessageUpdate(
+              (prev) =>
+                insertContextSummaryMessage(
+                  prev,
+                  summaryMessage,
+                  compaction.firstKeptMessageKey
+                ),
+              sessionId
+            )
+            preparedMessages = insertContextSummaryMessage(
+              preparedMessages,
+              summaryMessage,
+              compaction.firstKeptMessageKey
+            )
+          }
+        }
+
+        const query =
+          config.webSearch || memorySettings?.enabled
+            ? getWebSearchQuery(preparedMessages)
+            : ''
+        if (
+          query &&
+          memorySettings?.enabled &&
+          memorySettings.retrieve_limit > 0
+        ) {
+          try {
+            memoryResults = await searchUserMemories(
+              query,
+              memorySettings.retrieve_limit,
+              abortController.signal
+            )
+          } catch {
+            memoryResults = []
+          }
+        }
+        if (query) {
+          if (config.webSearch) {
+            searchResults = await searchWeb(
+              query,
+              config.group,
+              abortController.signal
+            )
+          }
+        }
+
+        if (
+          abortController.signal.aborted ||
+          !generationsRef.current.has(generation)
+        ) {
           return
         }
-      }
 
-      if (
-        abortController.signal.aborted ||
-        !generationsRef.current.has(generation)
-      ) {
-        return
+        if (config.stream) {
+          startStreamingChat(
+            preparedMessages,
+            sessionId,
+            generation,
+            searchResults,
+            memoryResults
+          )
+          return
+        }
+        await startNonStreamingChat(
+          preparedMessages,
+          sessionId,
+          generation,
+          searchResults,
+          memoryResults
+        )
+      } catch (error: unknown) {
+        if (abortController.signal.aborted) return
+        const { errorCode, errorMessage } = parseRequestErrorDetails(error)
+        handleStreamError(generation, errorMessage, errorCode)
       }
-
-      if (config.stream) {
-        startStreamingChat(messages, sessionId, generation, searchResults)
-        return
-      }
-      void startNonStreamingChat(messages, sessionId, generation, searchResults)
     },
     [
-      config.stream,
       config.group,
+      config.max_tokens,
+      config.model,
+      config.stream,
+      config.webSearch,
+      contextWindowTokens,
       handleStreamError,
+      memorySettings,
+      onMessageUpdate,
+      parameterEnabled.max_tokens,
       prepareGeneration,
       startNonStreamingChat,
       startStreamingChat,
@@ -575,25 +697,9 @@ export function useChatHandler({
           })),
         sessionId
       )
-      if (config.webSearch) {
-        void sendWebSearchChat(messages, sessionId)
-        return
-      }
-      if (config.stream) {
-        sendStreamingChat(messages, sessionId)
-      } else {
-        void sendNonStreamingChat(messages, sessionId)
-      }
+      void sendManagedChat(messages, sessionId)
     },
-    [
-      config.model,
-      config.stream,
-      config.webSearch,
-      onMessageUpdate,
-      sendNonStreamingChat,
-      sendStreamingChat,
-      sendWebSearchChat,
-    ]
+    [config.model, onMessageUpdate, sendManagedChat]
   )
 
   const stopGeneration = useCallback(

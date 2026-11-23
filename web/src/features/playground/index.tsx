@@ -29,6 +29,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
 
 import { PlaygroundChat } from './components/chat/playground-chat'
 import { PlaygroundHistorySidebar } from './components/history/playground-history-sidebar'
@@ -36,6 +37,8 @@ import { PlaygroundInput } from './components/input/playground-input'
 import {
   useChatHandler,
   useAiChatTitles,
+  useLongTermMemoryReflection,
+  useMemorySettings,
   usePlaygroundConversation,
   usePlaygroundOptions,
   usePlaygroundState,
@@ -83,9 +86,15 @@ export function Playground() {
     renameChat,
     deleteChat,
   } = usePlaygroundState()
+  const { models: pricingModels } = usePricingData()
+  const memorySettings = useMemorySettings()
 
   const { sendChat, stopGeneration, generatingSessionIds } = useChatHandler({
     config,
+    contextWindowTokens: pricingModels.find(
+      (model) => model.key === config.model
+    )?.context_length,
+    memorySettings,
     parameterEnabled,
     onMessageUpdate: updateMessages,
   })
@@ -103,6 +112,12 @@ export function Playground() {
     updateMessages,
     ensureActiveSessionId,
     sendChat,
+  })
+
+  useLongTermMemoryReflection({
+    config,
+    sessions,
+    settings: memorySettings,
   })
 
   const { isLoadingModels } = usePlaygroundOptions({

@@ -233,6 +233,14 @@ export type ModelSettings = {
   'global.chat_completions_to_responses_policy': string
   'general_setting.ping_interval_enabled': boolean
   'general_setting.ping_interval_seconds': number
+  'memory_setting.enabled': boolean
+  'memory_setting.auto_extract': boolean
+  'memory_setting.extract_every_rounds': number
+  'memory_setting.extract_window_messages': number
+  'memory_setting.retrieve_limit': number
+  'memory_setting.max_injected_chars': number
+  'memory_setting.min_importance': number
+  'memory_setting.retention_days': number
   'gemini.safety_settings': string
   'gemini.version_settings': string
   'gemini.supported_imagine_models': string
