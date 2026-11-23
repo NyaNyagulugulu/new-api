@@ -23,6 +23,7 @@ import {
   createChatSession,
   getChatSessionTitle,
   groupChatSessionsByDate,
+  mergeChatSessions,
 } from '../chat-sessions'
 
 const userMessage: Message = {
@@ -87,4 +88,25 @@ test('sessions are grouped by recency with the newest group first', () => {
     'last-week',
     'older',
   ])
+})
+
+test('server history wins while newer offline work is preserved', () => {
+  const localNewer = createSession('local-newer', 300, 'Local newer')
+  const localDeleted = createSession('local-deleted', 50, 'Old local copy')
+  const server = createSession('server', 100, 'Server copy')
+  const remoteUpdate = { ...server, updatedAt: 200, title: 'Server newer' }
+
+  const merged = mergeChatSessions(
+    [
+      localNewer,
+      localDeleted,
+      { ...server, updatedAt: 150, title: 'Local old' },
+    ],
+    [remoteUpdate]
+  )
+
+  expect(merged.map((session) => session.id)).toEqual(['local-newer', 'server'])
+  expect(merged.find((session) => session.id === 'server')?.title).toBe(
+    'Server newer'
+  )
 })

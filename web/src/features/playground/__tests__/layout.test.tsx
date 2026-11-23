@@ -66,6 +66,7 @@ vi.mock('@/features/playground/components/input/playground-input', () => ({
 }))
 
 vi.mock('../hooks', () => ({
+  useAiChatTitles: vi.fn(),
   useChatHandler: () => ({
     sendChat: vi.fn(),
     stopGeneration: mocks.stopGeneration,

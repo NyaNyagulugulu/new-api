@@ -380,6 +380,7 @@ func migrateDB() error {
 		&CasbinRule{},
 		&AuthzRole{},
 		&UserAccessToken{},
+		&ChatConversation{},
 	)
 	if err != nil {
 		return err

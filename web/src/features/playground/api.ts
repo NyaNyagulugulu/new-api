@@ -20,7 +20,9 @@ import { api } from '@/lib/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { API_ENDPOINTS } from './constants'
+import { chatSessionsSchema } from './lib/storage/storage-schema'
 import type {
+  ChatSession,
   ChatCompletionRequest,
   ChatCompletionResponse,
   ModelOption,
@@ -85,4 +87,62 @@ export async function getUserGroups(): Promise<GroupOption[]> {
     ratio: info.ratio,
     desc: info.desc,
   }))
+}
+
+type ServerChatSession = {
+  id: string
+  title: string
+  messages: unknown
+  created_at: number
+  updated_at: number
+}
+
+function parseChatSessions(value: unknown): ChatSession[] {
+  if (!Array.isArray(value)) return []
+
+  const sessions = value.flatMap((item) => {
+    const row = item as Partial<ServerChatSession>
+    if (
+      typeof row.id !== 'string' ||
+      typeof row.title !== 'string' ||
+      typeof row.created_at !== 'number' ||
+      typeof row.updated_at !== 'number'
+    ) {
+      return []
+    }
+    return [
+      {
+        id: row.id,
+        title: row.title,
+        messages: row.messages,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      },
+    ]
+  })
+  const parsed = chatSessionsSchema.safeParse(sessions)
+  return parsed.success ? parsed.data : []
+}
+
+export async function getChatConversations(): Promise<ChatSession[]> {
+  const res = await api.get(API_ENDPOINTS.CHAT_CONVERSATIONS)
+  const data = requireServerSuccess(res.data)
+  return parseChatSessions(data?.data)
+}
+
+export async function syncChatConversations(
+  sessions: ChatSession[],
+  deletedIds: string[]
+): Promise<void> {
+  const res = await api.put(API_ENDPOINTS.CHAT_CONVERSATIONS_SYNC, {
+    sessions: sessions.map((session) => ({
+      id: session.id,
+      title: session.title,
+      messages: session.messages,
+      created_at: session.createdAt,
+      updated_at: session.updatedAt,
+    })),
+    deleted_ids: deletedIds,
+  })
+  requireServerSuccess(res.data)
 }

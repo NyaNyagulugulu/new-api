@@ -25,7 +25,6 @@ import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-import { REASONING_EFFORT_OPTIONS } from '../../constants'
 import { estimateMessageUsageCostUSD, type MessageAlignment } from '../../lib'
 import type { Message } from '../../types'
 
@@ -77,11 +76,6 @@ export function MessageMetadata(props: MessageMetadataProps) {
   const estimatedCostUSD = usage
     ? estimateMessageUsageCostUSD(usage, pricingModel, groupRatio)
     : null
-  const reasoningEffortLabel = t(
-    REASONING_EFFORT_OPTIONS.find(
-      (option) => option.value === usage?.reasoningEffort
-    )?.labelKey ?? 'Auto'
-  )
 
   if (!messageTime && !duration && !usage) {
     return null
@@ -101,10 +95,6 @@ export function MessageMetadata(props: MessageMetadataProps) {
           label: t('Total tokens'),
           value: formatNumber(usage.totalTokens, locale),
         },
-        {
-          label: t('Reasoning effort'),
-          value: reasoningEffortLabel,
-        },
         ...(usage.cachedTokens > 0
           ? [
               {
@@ -118,14 +108,6 @@ export function MessageMetadata(props: MessageMetadataProps) {
               {
                 label: t('Cache write tokens'),
                 value: formatNumber(usage.cacheCreationTokens, locale),
-              },
-            ]
-          : []),
-        ...(usage.reasoningTokens > 0
-          ? [
-              {
-                label: t('Reasoning tokens'),
-                value: formatNumber(usage.reasoningTokens, locale),
               },
             ]
           : []),

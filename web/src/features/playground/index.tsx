@@ -35,6 +35,7 @@ import { PlaygroundHistorySidebar } from './components/history/playground-histor
 import { PlaygroundInput } from './components/input/playground-input'
 import {
   useChatHandler,
+  useAiChatTitles,
   usePlaygroundConversation,
   usePlaygroundOptions,
   usePlaygroundState,
@@ -110,6 +111,13 @@ export function Playground() {
     setGroups,
     setModels,
     updateConfig,
+  })
+
+  useAiChatTitles({
+    config,
+    isLoadingMessages,
+    renameChat,
+    sessions,
   })
 
   useEffect(

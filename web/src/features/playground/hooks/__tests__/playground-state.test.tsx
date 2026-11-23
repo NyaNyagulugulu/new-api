@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { beforeEach, expect, test } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
 
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -28,8 +28,20 @@ import {
 } from '../../lib'
 import { usePlaygroundState } from '../use-playground-state'
 
+const apiMocks = vi.hoisted(() => ({
+  getChatConversations: vi.fn(),
+  syncChatConversations: vi.fn(),
+}))
+
+vi.mock('../../api', () => ({
+  getChatConversations: apiMocks.getChatConversations,
+  syncChatConversations: apiMocks.syncChatConversations,
+}))
+
 beforeEach(() => {
   localStorage.clear()
+  apiMocks.getChatConversations.mockResolvedValue([])
+  apiMocks.syncChatConversations.mockResolvedValue([])
   useAuthStore.getState().auth.reset()
   useAuthStore.getState().auth.setUser({ id: 1, username: 'A', role: 1 })
 })
@@ -58,4 +70,8 @@ test('stream updates target an existing background session', async () => {
     'Hello back'
   )
   expect(result.current.messages.at(-1)?.status).toBe('streaming')
+  await waitFor(
+    () => expect(apiMocks.syncChatConversations).toHaveBeenCalled(),
+    { timeout: 4_000 }
+  )
 })

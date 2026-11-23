@@ -1,0 +1,126 @@
+package model
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"testing"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+)
+
+func testChatConversationDatabaseMatrix(t *testing.T) {
+	t.Helper()
+	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			var driver gorm.Dialector
+			switch dialect {
+			case "sqlite":
+				driver = sqlite.Open(":memory:")
+			case "mysql":
+				dsn := os.Getenv("TEST_MYSQL_DSN")
+				if dsn == "" {
+					t.Skip("TEST_MYSQL_DSN not configured")
+				}
+				driver = mysql.Open(dsn)
+			case "postgres":
+				dsn := os.Getenv("TEST_POSTGRES_DSN")
+				if dsn == "" {
+					t.Skip("TEST_POSTGRES_DSN not configured")
+				}
+				driver = postgres.Open(dsn)
+			}
+
+			db, err := gorm.Open(driver, &gorm.Config{})
+			require.NoError(t, err)
+			sqlDB, err := db.DB()
+			require.NoError(t, err)
+			sqlDB.SetMaxOpenConns(1)
+
+			previousDB := DB
+			DB = db
+			t.Cleanup(func() {
+				require.NoError(t, db.Migrator().DropTable(&ChatConversation{}))
+				DB = previousDB
+				require.NoError(t, sqlDB.Close())
+			})
+
+			require.NoError(t, db.AutoMigrate(&ChatConversation{}))
+			require.NoError(t, db.AutoMigrate(&ChatConversation{}))
+
+			messages, err := common.Marshal([]map[string]any{
+				{
+					"key":  "message-1",
+					"from": "user",
+					"versions": []map[string]any{
+						{"id": "version-1", "content": "Hello"},
+					},
+				},
+			})
+			require.NoError(t, err)
+
+			session := ChatConversationInput{
+				Id:        "chat-1",
+				Title:     "First chat",
+				Messages:  json.RawMessage(messages),
+				CreatedAt: 10,
+				UpdatedAt: 20,
+			}
+			require.NoError(t, SyncChatConversations(
+				context.Background(),
+				1,
+				[]ChatConversationInput{session},
+				nil,
+			))
+
+			rows, err := ListChatConversations(context.Background(), 1)
+			require.NoError(t, err)
+			require.Len(t, rows, 1)
+			assert.Equal(t, "First chat", rows[0].Title)
+			assert.JSONEq(t, string(messages), string(rows[0].Messages))
+
+			otherRows, err := ListChatConversations(context.Background(), 2)
+			require.NoError(t, err)
+			assert.Empty(t, otherRows)
+
+			session.Title = "Updated chat"
+			session.UpdatedAt = 30
+			require.NoError(t, SyncChatConversations(
+				context.Background(),
+				1,
+				[]ChatConversationInput{session},
+				nil,
+			))
+			rows, err = ListChatConversations(context.Background(), 1)
+			require.NoError(t, err)
+			assert.Equal(t, "Updated chat", rows[0].Title)
+
+			require.ErrorIs(t, SyncChatConversations(
+				context.Background(),
+				2,
+				[]ChatConversationInput{session},
+				nil,
+			), ErrChatConversationForbidden)
+
+			require.NoError(t, SyncChatConversations(
+				context.Background(),
+				1,
+				nil,
+				[]string{"chat-1"},
+			))
+			rows, err = ListChatConversations(context.Background(), 1)
+			require.NoError(t, err)
+			assert.Empty(t, rows)
+		})
+	}
+}
+
+func TestChatConversationDatabaseMatrix(t *testing.T) {
+	testChatConversationDatabaseMatrix(t)
+}

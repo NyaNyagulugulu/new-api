@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { nanoid } from 'nanoid'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { getChatConversations, syncChatConversations } from '../api'
 import { DEFAULT_CONFIG, DEFAULT_PARAMETER_ENABLED } from '../constants'
 import {
   applyMessageStateUpdate,
@@ -27,6 +28,7 @@ import {
   getInitialPlaygroundConfig,
   loadActiveChatSessionId,
   loadChatSessions,
+  mergeChatSessions,
   saveActiveChatSessionId,
   saveChatSessions,
   saveConfig,
@@ -43,7 +45,9 @@ import type {
 } from '../types'
 
 const SESSION_SAVE_DEBOUNCE_MS = 500
+const SERVER_SYNC_DEBOUNCE_MS = 1200
 const EMPTY_MESSAGES: Message[] = []
+type SyncedSessionState = Pick<ChatSession, 'title' | 'updatedAt'>
 
 /**
  * Main state management hook for the web chat.
@@ -67,35 +71,90 @@ export function usePlaygroundState() {
   const sessionsRef = useRef<ChatSession[]>([])
   const hasLoadedSessionsRef = useRef(false)
   const saveTimerRef = useRef<number | null>(null)
+  const serverSyncTimerRef = useRef<number | null>(null)
+  const lastSyncedSessionsRef = useRef<Map<string, SyncedSessionState>>(
+    new Map()
+  )
 
   const setActiveSessionId = useCallback((sessionId: string | null) => {
     activeSessionIdRef.current = sessionId
     setActiveSessionIdState(sessionId)
   }, [])
 
+  const syncPendingSessions = useCallback(() => {
+    const currentSessions = sessionsRef.current
+    const currentIds = new Set(currentSessions.map((session) => session.id))
+    const changedSessions = currentSessions.filter((session) => {
+      const previous = lastSyncedSessionsRef.current.get(session.id)
+      return (
+        !previous ||
+        previous.updatedAt !== session.updatedAt ||
+        previous.title !== session.title
+      )
+    })
+    const deletedIds = [...lastSyncedSessionsRef.current.keys()].filter(
+      (id) => !currentIds.has(id)
+    )
+    if (changedSessions.length === 0 && deletedIds.length === 0) return
+
+    const changedSnapshot = changedSessions.map((session) => ({
+      id: session.id,
+      title: session.title,
+      updatedAt: session.updatedAt,
+    }))
+    void syncChatConversations(changedSessions, deletedIds)
+      .then(() => {
+        for (const session of changedSnapshot) {
+          lastSyncedSessionsRef.current.set(session.id, {
+            title: session.title,
+            updatedAt: session.updatedAt,
+          })
+        }
+        for (const id of deletedIds) {
+          lastSyncedSessionsRef.current.delete(id)
+        }
+      })
+      .catch(() => {
+        // Keep the unsynced snapshot so a later edit retries the upload.
+      })
+  }, [])
+
   useEffect(() => {
     let cancelled = false
-    const loadTimer = window.setTimeout(() => {
-      const loadedSessions = loadChatSessions()
+    const load = async () => {
+      const localSessions = loadChatSessions()
+      let serverSessions: ChatSession[] = []
+      try {
+        serverSessions = await getChatConversations()
+      } catch {
+        // Local storage remains the fallback while the server is unavailable.
+      }
       if (cancelled) return
 
+      const loadedSessions = mergeChatSessions(localSessions, serverSessions)
       const storedActiveSessionId = loadActiveChatSessionId()
       const nextActiveSessionId = loadedSessions.some(
         (session) => session.id === storedActiveSessionId
       )
         ? storedActiveSessionId
-        : null
+        : (loadedSessions[0]?.id ?? null)
 
+      lastSyncedSessionsRef.current = new Map(
+        serverSessions.map((session) => [
+          session.id,
+          { title: session.title, updatedAt: session.updatedAt },
+        ])
+      )
       sessionsRef.current = loadedSessions
       hasLoadedSessionsRef.current = true
       setSessions(loadedSessions)
       setActiveSessionId(nextActiveSessionId)
       setIsLoadingMessages(false)
-    }, 0)
+    }
+    void load()
 
     return () => {
       cancelled = true
-      window.clearTimeout(loadTimer)
     }
   }, [setActiveSessionId])
 
@@ -106,13 +165,21 @@ export function usePlaygroundState() {
     if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current)
     }
+    if (serverSyncTimerRef.current !== null) {
+      window.clearTimeout(serverSyncTimerRef.current)
+    }
 
     saveTimerRef.current = window.setTimeout(() => {
       saveTimerRef.current = null
       saveChatSessions(sessionsRef.current)
       saveActiveChatSessionId(activeSessionIdRef.current)
     }, SESSION_SAVE_DEBOUNCE_MS)
-  }, [activeSessionId, sessions])
+
+    serverSyncTimerRef.current = window.setTimeout(() => {
+      serverSyncTimerRef.current = null
+      syncPendingSessions()
+    }, SERVER_SYNC_DEBOUNCE_MS)
+  }, [activeSessionId, sessions, syncPendingSessions])
 
   useEffect(
     () => () => {
@@ -121,8 +188,12 @@ export function usePlaygroundState() {
         saveChatSessions(sessionsRef.current)
         saveActiveChatSessionId(activeSessionIdRef.current)
       }
+      if (serverSyncTimerRef.current !== null) {
+        window.clearTimeout(serverSyncTimerRef.current)
+        syncPendingSessions()
+      }
     },
-    []
+    [syncPendingSessions]
   )
 
   const updateConfig = useCallback(
@@ -246,7 +317,9 @@ export function usePlaygroundState() {
 
     setSessions((previousSessions) =>
       previousSessions.map((session) =>
-        session.id === sessionId ? { ...session, title: nextTitle } : session
+        session.id === sessionId
+          ? { ...session, title: nextTitle, updatedAt: Date.now() }
+          : session
       )
     )
   }, [])

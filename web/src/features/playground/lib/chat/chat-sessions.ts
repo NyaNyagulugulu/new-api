@@ -119,3 +119,41 @@ export function groupChatSessionsByDate(
     .map((key) => ({ key, sessions: grouped.get(key) ?? [] }))
     .filter((group) => group.sessions.length > 0)
 }
+
+/**
+ * Merge local fallback data with server history.
+ *
+ * Server history is authoritative for conversations it knows about. A local
+ * conversation missing from a non-empty server snapshot is retained only when
+ * it is newer than every server conversation, which preserves work created
+ * while offline without resurrecting old deleted chats.
+ */
+export function mergeChatSessions(
+  localSessions: ChatSession[],
+  serverSessions: ChatSession[]
+): ChatSession[] {
+  if (serverSessions.length === 0) return localSessions
+
+  const serverLatest = Math.max(
+    ...serverSessions.map((session) => session.updatedAt)
+  )
+  const merged = new Map(serverSessions.map((session) => [session.id, session]))
+
+  for (const localSession of localSessions) {
+    const serverSession = merged.get(localSession.id)
+    if (serverSession) {
+      if (localSession.updatedAt > serverSession.updatedAt) {
+        merged.set(localSession.id, localSession)
+      }
+      continue
+    }
+
+    if (localSession.updatedAt > serverLatest) {
+      merged.set(localSession.id, localSession)
+    }
+  }
+
+  return [...merged.values()].sort(
+    (left, right) => right.updatedAt - left.updatedAt
+  )
+}

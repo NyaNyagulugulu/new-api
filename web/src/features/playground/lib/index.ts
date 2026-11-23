@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 export * from './input/input-control-utils'
 export * from './input/input-attachments'
 export * from './chat/chat-sessions'
+export * from './chat/chat-title'
 export * from './message/conversation-message-utils'
 export * from './message/message-action-utils'
 export * from './message/message-content-utils'
