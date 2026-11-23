@@ -36,6 +36,8 @@ const VALID_MEMORY_CATEGORIES = new Set([
   'project',
   'other',
 ])
+const EXPLICIT_MEMORY_PATTERN =
+  /(记住|以后|从现在开始|你就叫|叫我|remember|from now on|call me)/i
 
 function addContextToUserMessage(
   message: ChatCompletionMessage,
@@ -177,6 +179,29 @@ export function parseExtractedMemories(content: string): UserMemoryInput[] {
     if (results.length >= MAX_EXTRACTED_MEMORIES) break
   }
   return results
+}
+
+export function extractExplicitMemoryInputs(
+  messages: Message[],
+  conversationId: string,
+  sourceKey: string
+): UserMemoryInput[] {
+  const memories: UserMemoryInput[] = []
+  for (const message of messages) {
+    if (message.from !== MESSAGE_ROLES.USER) continue
+    const content = message.versions[0]?.content.trim() ?? ''
+    if (!content || content.length > MAX_MEMORY_CONTENT) continue
+    if (!EXPLICIT_MEMORY_PATTERN.test(content)) continue
+    memories.push({
+      content,
+      keywords: [],
+      category: 'preference',
+      importance: 0.9,
+      conversation_id: conversationId,
+      source_key: sourceKey,
+    })
+  }
+  return memories.slice(-3)
 }
 
 export function getMemoryExtractionResponseContent(

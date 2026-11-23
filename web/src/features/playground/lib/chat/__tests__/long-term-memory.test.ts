@@ -21,6 +21,7 @@ import { expect, test } from 'vitest'
 import type { ChatCompletionRequest, UserMemory } from '../../../types'
 import {
   addLongTermMemoryContext,
+  extractExplicitMemoryInputs,
   parseExtractedMemories,
 } from '../long-term-memory'
 
@@ -72,5 +73,28 @@ test('parses a fenced JSON memory extraction response', () => {
       conversation_id: '',
       source_key: '',
     },
+  ])
+})
+
+test('captures explicit identity and preference requests immediately', () => {
+  const memories = extractExplicitMemoryInputs(
+    [
+      {
+        key: 'user-1',
+        from: 'user',
+        versions: [{ id: 'v1', content: '以后你就叫哈基米了' }],
+      },
+    ],
+    'chat-1',
+    'chat-1:assistant-1'
+  )
+
+  expect(memories).toEqual([
+    expect.objectContaining({
+      content: '以后你就叫哈基米了',
+      category: 'preference',
+      importance: 0.9,
+      conversation_id: 'chat-1',
+    }),
   ])
 })

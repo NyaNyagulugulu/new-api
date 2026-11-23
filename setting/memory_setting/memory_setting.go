@@ -25,7 +25,7 @@ type MemorySetting struct {
 var memorySetting = MemorySetting{
 	Enabled:               true,
 	AutoExtract:           true,
-	ExtractEveryRounds:    6,
+	ExtractEveryRounds:    1,
 	ExtractWindowMessages: 40,
 	RetrieveLimit:         5,
 	MaxInjectedChars:      3_000,

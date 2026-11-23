@@ -27,6 +27,7 @@ import {
 } from '../api'
 import {
   buildMemoryExtractionMessages,
+  extractExplicitMemoryInputs,
   getMemoryExtractionResponseContent,
   isMemoryExtractionMessage,
   mergeChatCompletionUsage,
@@ -126,6 +127,11 @@ export function useLongTermMemoryReflection({
             message.versions[0]?.content.trim().length > 0
         )
         .slice(-settings.extract_window_messages)
+      const explicitMemories = extractExplicitMemoryInputs(
+        windowMessages,
+        session.id,
+        sourceKey
+      )
       void sendChatCompletion({
         model: config.model,
         group: config.group,
@@ -139,11 +145,14 @@ export function useLongTermMemoryReflection({
             message?.content,
             message?.reasoning_content ?? message?.reasoning
           )
-          const memories = parseExtractedMemories(content).map((memory) => ({
-            ...memory,
-            conversation_id: session.id,
-            source_key: sourceKey,
-          }))
+          const extractedMemories = parseExtractedMemories(content)
+          const memories = [...extractedMemories, ...explicitMemories].map(
+            (memory) => ({
+              ...memory,
+              conversation_id: session.id,
+              source_key: sourceKey,
+            })
+          )
           let embeddingUsage: ChatCompletionUsage | undefined
           if (memories.length > 0) {
             let embeddings: number[][] = []
@@ -178,8 +187,11 @@ export function useLongTermMemoryReflection({
             )
           }
         })
-        .catch(() => {
+        .catch(async () => {
           // Memory extraction is best-effort and must never interrupt chat.
+          if (explicitMemories.length > 0) {
+            await saveUserMemories(explicitMemories).catch(() => undefined)
+          }
         })
         .finally(() => {
           const next = new Set(activeSessionsRef.current)

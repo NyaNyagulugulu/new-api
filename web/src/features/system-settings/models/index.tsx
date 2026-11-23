@@ -32,7 +32,7 @@ const defaultModelSettings: ModelSettings = {
   'general_setting.ping_interval_seconds': 60,
   'memory_setting.enabled': true,
   'memory_setting.auto_extract': true,
-  'memory_setting.extract_every_rounds': 6,
+  'memory_setting.extract_every_rounds': 1,
   'memory_setting.extract_window_messages': 40,
   'memory_setting.retrieve_limit': 5,
   'memory_setting.max_injected_chars': 3000,
