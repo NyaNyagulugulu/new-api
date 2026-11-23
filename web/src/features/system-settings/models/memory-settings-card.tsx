@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -32,8 +32,10 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
+import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
 
 import {
   SettingsForm,
@@ -80,6 +82,7 @@ export function MemorySettingsCard(props: {
 }) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
+  const { models, usableGroup } = usePricingData()
   const form = useForm<MemorySettingsInput, unknown, MemorySettingsValues>({
     resolver: zodResolver(schema),
     defaultValues: props.defaultValues as MemorySettingsInput,
@@ -88,6 +91,26 @@ export function MemorySettingsCard(props: {
   useEffect(() => {
     form.reset(props.defaultValues as MemorySettingsInput)
   }, [form, props.defaultValues])
+
+  const embeddingModels = useMemo(() => {
+    const names = models
+      .map((model) => model.model_name)
+      .filter((name) => /embed|bge|m3/i.test(name))
+    const current = props.defaultValues['memory_setting.embedding_model']
+    if (current && !names.includes(current)) {
+      names.unshift(current)
+    }
+    return [...new Set(names)].sort((left, right) => left.localeCompare(right))
+  }, [models, props.defaultValues])
+
+  const embeddingGroups = useMemo(() => {
+    const groups = Object.keys(usableGroup)
+    const current = props.defaultValues['memory_setting.embedding_group']
+    if (current && !groups.includes(current)) {
+      groups.push(current)
+    }
+    return groups.sort((left, right) => left.localeCompare(right))
+  }, [props.defaultValues, usableGroup])
 
   const onSubmit = async (values: MemorySettingsValues) => {
     const updates = Object.entries(values).filter(
@@ -168,30 +191,59 @@ export function MemorySettingsCard(props: {
 
           <Separator />
 
-          {(
-            [
-              ['memory_setting.embedding_model', 'Embedding model'],
-              ['memory_setting.embedding_group', 'Embedding group'],
-            ] as const
-          ).map(([name, label]) => (
-            <FormField
-              control={form.control}
-              key={name}
-              name={name}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t(label)}</FormLabel>
-                  <FormControl>
-                    <Input
-                      onChange={(event) => field.onChange(event.target.value)}
-                      value={field.value}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          ))}
+          <FormField
+            control={form.control}
+            name='memory_setting.embedding_model'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Embedding model')}</FormLabel>
+                <FormControl>
+                  <NativeSelect
+                    className='w-full'
+                    onChange={(event) => field.onChange(event.target.value)}
+                    value={field.value}
+                  >
+                    <NativeSelectOption value=''>
+                      {t('Select embedding model')}
+                    </NativeSelectOption>
+                    {embeddingModels.map((model) => (
+                      <NativeSelectOption key={model} value={model}>
+                        {model}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='memory_setting.embedding_group'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Embedding group')}</FormLabel>
+                <FormControl>
+                  <NativeSelect
+                    className='w-full'
+                    onChange={(event) => field.onChange(event.target.value)}
+                    value={field.value}
+                  >
+                    <NativeSelectOption value=''>
+                      {t('Use current chat group')}
+                    </NativeSelectOption>
+                    {embeddingGroups.map((group) => (
+                      <NativeSelectOption key={group} value={group}>
+                        {group}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
           {(
             [
