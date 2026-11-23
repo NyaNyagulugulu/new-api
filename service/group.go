@@ -113,6 +113,9 @@ func GetGroupsEnabledModels(groups []string) []string {
 	models := make([]string, 0)
 	for _, group := range groups {
 		for _, modelName := range model.GetGroupEnabledModels(group) {
+			if isInternalRoutingModel(modelName) {
+				continue
+			}
 			if _, ok := seen[modelName]; !ok {
 				seen[modelName] = struct{}{}
 				models = append(models, modelName)
@@ -120,6 +123,11 @@ func GetGroupsEnabledModels(groups []string) []string {
 		}
 	}
 	return models
+}
+
+func isInternalRoutingModel(modelName string) bool {
+	return modelName == constant.DeepSeekSearchModel ||
+		modelName == constant.DeepSeekFetchModel
 }
 
 // GetUserGroupRatio 获取用户使用某个分组的倍率
