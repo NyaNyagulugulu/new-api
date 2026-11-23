@@ -23,6 +23,7 @@ import {
   buildChatTitlePrompt,
   canGenerateChatTitle,
   extractChatTitle,
+  getChatSessionTitle,
 } from '../lib'
 import type { ChatSession, PlaygroundConfig } from '../types'
 
@@ -41,6 +42,8 @@ export function useAiChatTitles({
 }: UseAiChatTitlesParams) {
   const attemptedSessionsRef = useRef<ReadonlySet<string>>(new Set())
   const initializedRef = useRef(false)
+  const sessionsRef = useRef(sessions)
+  sessionsRef.current = sessions
 
   useEffect(() => {
     if (isLoadingMessages) return
@@ -65,6 +68,11 @@ export function useAiChatTitles({
     ])
 
     for (const session of candidates) {
+      const fallbackTitle = getChatSessionTitle(session, '')
+      if (fallbackTitle) {
+        renameChat(session.id, fallbackTitle)
+      }
+
       void sendChatCompletion({
         model: config.model,
         group: config.group,
@@ -75,15 +83,29 @@ export function useAiChatTitles({
           },
         ],
         stream: false,
-        max_tokens: 48,
+        max_tokens: 512,
       })
         .then((response) => {
+          const responseMessage = response.choices?.[0]?.message
           const title = extractChatTitle(
-            response.choices?.[0]?.message?.content ?? ''
+            responseMessage?.content ||
+              responseMessage?.reasoning_content ||
+              responseMessage?.reasoning ||
+              ''
           )
-          if (title) {
-            renameChat(session.id, title)
+          if (!title) return
+
+          const latestSession = sessionsRef.current.find(
+            (item) => item.id === session.id
+          )
+          if (
+            !latestSession ||
+            (latestSession.title.trim() &&
+              latestSession.title !== fallbackTitle)
+          ) {
+            return
           }
+          renameChat(session.id, title)
         })
         .catch(() => {
           // Keep the first-message fallback title when title generation fails.

@@ -26,22 +26,45 @@ import {
   applyStreamingChunk,
   updateLastAssistantMessage,
 } from '../../lib'
+import type {
+  ChatCompletionRequest,
+  ChatCompletionUsage,
+  Message,
+} from '../../types'
+import { useChatHandler } from '../use-chat-handler'
 import { usePlaygroundState } from '../use-playground-state'
 
 const apiMocks = vi.hoisted(() => ({
+  deleteChatConversation: vi.fn(),
   getChatConversations: vi.fn(),
+  sendChatCompletion: vi.fn(),
   syncChatConversations: vi.fn(),
 }))
 
 vi.mock('../../api', () => ({
+  deleteChatConversation: apiMocks.deleteChatConversation,
   getChatConversations: apiMocks.getChatConversations,
+  sendChatCompletion: apiMocks.sendChatCompletion,
   syncChatConversations: apiMocks.syncChatConversations,
+}))
+
+const streamMocks = vi.hoisted(() => ({
+  sendStreamRequest: vi.fn(),
+  stopStream: vi.fn(),
+}))
+
+vi.mock('../use-stream-request', () => ({
+  useStreamRequest: () => ({
+    sendStreamRequest: streamMocks.sendStreamRequest,
+    stopStream: streamMocks.stopStream,
+  }),
 }))
 
 beforeEach(() => {
   localStorage.clear()
   apiMocks.getChatConversations.mockResolvedValue([])
   apiMocks.syncChatConversations.mockResolvedValue([])
+  apiMocks.deleteChatConversation.mockResolvedValue(undefined)
   useAuthStore.getState().auth.reset()
   useAuthStore.getState().auth.setUser({ id: 1, username: 'A', role: 1 })
 })
@@ -74,4 +97,53 @@ test('stream updates target an existing background session', async () => {
     () => expect(apiMocks.syncChatConversations).toHaveBeenCalled(),
     { timeout: 4_000 }
   )
+})
+
+function usePlaygroundHarness() {
+  const state = usePlaygroundState()
+  const chat = useChatHandler({
+    config: state.config,
+    parameterEnabled: state.parameterEnabled,
+    onMessageUpdate: state.updateMessages,
+  })
+  return { ...state, ...chat }
+}
+
+test('final streamed chunks are committed when completion arrives immediately', async () => {
+  const { result } = renderHook(() => usePlaygroundHarness())
+  await waitFor(() => expect(result.current.isLoadingMessages).toBe(false))
+
+  let sessionId = ''
+  let messages: Message[] = []
+  act(() => {
+    sessionId = result.current.ensureActiveSessionId()
+    messages = appendUserMessagePair([], 'Hello')
+    result.current.updateMessages(messages, sessionId)
+    result.current.sendChat(messages, sessionId)
+  })
+  expect(result.current.messages.at(-1)?.model).toBe(
+    result.current.config.model
+  )
+
+  const streamCall = streamMocks.sendStreamRequest.mock.calls.at(-1)
+  expect(streamCall).toBeDefined()
+  if (!streamCall) return
+
+  const [, , onUpdate, onComplete] = streamCall as [
+    string,
+    ChatCompletionRequest,
+    (type: 'reasoning' | 'content', chunk: string) => void,
+    (usage?: ChatCompletionUsage) => void,
+    (error: string, errorCode?: string) => void,
+  ]
+
+  act(() => {
+    onUpdate('content', 'Hello back')
+    onComplete({ prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 })
+  })
+
+  const assistantMessage = result.current.messages.at(-1)
+  expect(assistantMessage?.versions[0]?.content).toBe('Hello back')
+  expect(assistantMessage?.status).toBe('complete')
+  expect(assistantMessage?.usage?.totalTokens).toBe(5)
 })

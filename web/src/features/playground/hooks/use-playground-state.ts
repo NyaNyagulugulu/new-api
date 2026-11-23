@@ -19,7 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 import { nanoid } from 'nanoid'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { getChatConversations, syncChatConversations } from '../api'
+import { handleServerError } from '@/lib/handle-server-error'
+
+import {
+  deleteChatConversation,
+  getChatConversations,
+  syncChatConversations,
+} from '../api'
 import { DEFAULT_CONFIG, DEFAULT_PARAMETER_ENABLED } from '../constants'
 import {
   applyMessageStateUpdate,
@@ -83,7 +89,6 @@ export function usePlaygroundState() {
 
   const syncPendingSessions = useCallback(() => {
     const currentSessions = sessionsRef.current
-    const currentIds = new Set(currentSessions.map((session) => session.id))
     const changedSessions = currentSessions.filter((session) => {
       const previous = lastSyncedSessionsRef.current.get(session.id)
       return (
@@ -92,26 +97,33 @@ export function usePlaygroundState() {
         previous.title !== session.title
       )
     })
-    const deletedIds = [...lastSyncedSessionsRef.current.keys()].filter(
-      (id) => !currentIds.has(id)
-    )
-    if (changedSessions.length === 0 && deletedIds.length === 0) return
+    if (changedSessions.length === 0) return
 
     const changedSnapshot = changedSessions.map((session) => ({
       id: session.id,
       title: session.title,
       updatedAt: session.updatedAt,
     }))
-    void syncChatConversations(changedSessions, deletedIds)
+    void syncChatConversations(changedSessions)
       .then(() => {
+        const currentSessionsById = new Map(
+          sessionsRef.current.map((session) => [session.id, session])
+        )
         for (const session of changedSnapshot) {
+          if (!currentSessionsById.has(session.id)) continue
+          const previous = lastSyncedSessionsRef.current.get(session.id)
+          if (
+            previous &&
+            (previous.updatedAt > session.updatedAt ||
+              (previous.updatedAt === session.updatedAt &&
+                previous.title !== session.title))
+          ) {
+            continue
+          }
           lastSyncedSessionsRef.current.set(session.id, {
             title: session.title,
             updatedAt: session.updatedAt,
           })
-        }
-        for (const id of deletedIds) {
-          lastSyncedSessionsRef.current.delete(id)
         }
       })
       .catch(() => {
@@ -257,21 +269,23 @@ export function usePlaygroundState() {
           (session) => session.id !== targetSessionId
         )
         if (nextMessages.length === 0) {
+          const updatedAt = Math.max(Date.now(), currentSession.updatedAt + 1)
           return [
             {
               ...currentSession,
               messages: [],
-              updatedAt: Date.now(),
+              updatedAt,
             },
             ...otherSessions,
           ]
         }
 
+        const updatedAt = Math.max(Date.now(), currentSession.updatedAt + 1)
         return [
           {
             ...currentSession,
             messages: nextMessages,
-            updatedAt: Date.now(),
+            updatedAt,
           },
           ...otherSessions,
         ]
@@ -318,7 +332,11 @@ export function usePlaygroundState() {
     setSessions((previousSessions) =>
       previousSessions.map((session) =>
         session.id === sessionId
-          ? { ...session, title: nextTitle, updatedAt: Date.now() }
+          ? {
+              ...session,
+              title: nextTitle,
+              updatedAt: Math.max(Date.now(), session.updatedAt + 1),
+            }
           : session
       )
     )
@@ -326,12 +344,16 @@ export function usePlaygroundState() {
 
   const deleteChat = useCallback(
     (sessionId: string) => {
+      lastSyncedSessionsRef.current.delete(sessionId)
       setSessions((previousSessions) =>
         previousSessions.filter((session) => session.id !== sessionId)
       )
       if (activeSessionIdRef.current === sessionId) {
         createNewChat()
       }
+      void deleteChatConversation(sessionId).catch((error: unknown) => {
+        handleServerError(error)
+      })
     },
     [createNewChat]
   )

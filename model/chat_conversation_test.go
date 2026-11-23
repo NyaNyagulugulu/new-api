@@ -76,7 +76,6 @@ func testChatConversationDatabaseMatrix(t *testing.T) {
 				context.Background(),
 				1,
 				[]ChatConversationInput{session},
-				nil,
 			))
 
 			rows, err := ListChatConversations(context.Background(), 1)
@@ -95,28 +94,68 @@ func testChatConversationDatabaseMatrix(t *testing.T) {
 				context.Background(),
 				1,
 				[]ChatConversationInput{session},
-				nil,
 			))
 			rows, err = ListChatConversations(context.Background(), 1)
 			require.NoError(t, err)
 			assert.Equal(t, "Updated chat", rows[0].Title)
 
+			staleSession := session
+			staleSession.Title = "Stale title"
+			staleSession.UpdatedAt = 25
+			require.NoError(t, SyncChatConversations(
+				context.Background(),
+				1,
+				[]ChatConversationInput{staleSession},
+			))
+			rows, err = ListChatConversations(context.Background(), 1)
+			require.NoError(t, err)
+			assert.Equal(t, "Updated chat", rows[0].Title)
+
+			newerWithoutTitle := session
+			newerWithoutTitle.Title = ""
+			newerWithoutTitle.UpdatedAt = 40
+			newerWithoutTitle.Messages = json.RawMessage(`[{"key":"message-2"}]`)
+			require.NoError(t, SyncChatConversations(
+				context.Background(),
+				1,
+				[]ChatConversationInput{newerWithoutTitle},
+			))
+			rows, err = ListChatConversations(context.Background(), 1)
+			require.NoError(t, err)
+			assert.Equal(t, "Updated chat", rows[0].Title)
+			assert.JSONEq(t, string(newerWithoutTitle.Messages), string(rows[0].Messages))
+
 			require.ErrorIs(t, SyncChatConversations(
 				context.Background(),
 				2,
 				[]ChatConversationInput{session},
-				nil,
 			), ErrChatConversationForbidden)
+
+			require.NoError(t, DeleteChatConversation(context.Background(), 2, "chat-1"))
+			rows, err = ListChatConversations(context.Background(), 1)
+			require.NoError(t, err)
+			require.Len(t, rows, 1)
 
 			require.NoError(t, SyncChatConversations(
 				context.Background(),
 				1,
-				nil,
-				[]string{"chat-1"},
+				[]ChatConversationInput{{
+					Id:        "chat-2",
+					Title:     "Another chat",
+					Messages:  json.RawMessage(`[{"key":"message-3"}]`),
+					CreatedAt: 50,
+					UpdatedAt: 50,
+				}},
 			))
 			rows, err = ListChatConversations(context.Background(), 1)
 			require.NoError(t, err)
-			assert.Empty(t, rows)
+			require.Len(t, rows, 2)
+
+			require.NoError(t, DeleteChatConversation(context.Background(), 1, "chat-1"))
+			rows, err = ListChatConversations(context.Background(), 1)
+			require.NoError(t, err)
+			require.Len(t, rows, 1)
+			assert.Equal(t, "chat-2", rows[0].Id)
 		})
 	}
 }

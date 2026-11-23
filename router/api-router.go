@@ -101,6 +101,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/models", controller.GetUserModels)
 				selfRoute.GET("/self/chat_conversations", controller.GetChatConversations)
 				selfRoute.PUT("/self/chat_conversations/sync", controller.SyncChatConversations)
+				selfRoute.DELETE("/self/chat_conversations/:id", controller.DeleteChatConversation)
 				selfRoute.PUT("/self", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.UpdateSelf)
 				selfRoute.DELETE("/self", middleware.DisableCache(), controller.DeleteSelf)
 				accessTokenRoute := selfRoute.Group("/access_tokens")

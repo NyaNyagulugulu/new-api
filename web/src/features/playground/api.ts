@@ -20,6 +20,7 @@ import { api } from '@/lib/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { API_ENDPOINTS } from './constants'
+import { sanitizeMessagesOnLoad } from './lib/message/message-streaming-utils'
 import { chatSessionsSchema } from './lib/storage/storage-schema'
 import type {
   ChatSession,
@@ -121,7 +122,12 @@ function parseChatSessions(value: unknown): ChatSession[] {
     ]
   })
   const parsed = chatSessionsSchema.safeParse(sessions)
-  return parsed.success ? parsed.data : []
+  return parsed.success
+    ? parsed.data.map((session) => ({
+        ...session,
+        messages: sanitizeMessagesOnLoad(session.messages),
+      }))
+    : []
 }
 
 export async function getChatConversations(): Promise<ChatSession[]> {
@@ -131,8 +137,7 @@ export async function getChatConversations(): Promise<ChatSession[]> {
 }
 
 export async function syncChatConversations(
-  sessions: ChatSession[],
-  deletedIds: string[]
+  sessions: ChatSession[]
 ): Promise<void> {
   const res = await api.put(API_ENDPOINTS.CHAT_CONVERSATIONS_SYNC, {
     sessions: sessions.map((session) => ({
@@ -142,7 +147,13 @@ export async function syncChatConversations(
       created_at: session.createdAt,
       updated_at: session.updatedAt,
     })),
-    deleted_ids: deletedIds,
   })
+  requireServerSuccess(res.data)
+}
+
+export async function deleteChatConversation(id: string): Promise<void> {
+  const res = await api.delete(
+    `${API_ENDPOINTS.CHAT_CONVERSATIONS}/${encodeURIComponent(id)}`
+  )
   requireServerSuccess(res.data)
 }

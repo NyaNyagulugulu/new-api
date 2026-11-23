@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import deepSeekThinkingImage from '@/assets/custom/deep.gif'
 import {
   CodeBlock,
   CodeBlockCopyButton,
@@ -54,6 +55,8 @@ import { MessageAttachments } from './message-attachments'
 import { MessageError } from './message-error'
 import { MessageMetadata } from './message-metadata'
 
+const DEEPSEEK_MODEL_PATTERN = /deepseek/i
+
 type PlaygroundMessageContentProps = {
   actions: ReactNode
   alignment: MessageAlignment
@@ -87,6 +90,8 @@ export function PlaygroundMessageContent({
   const isMessageFinal =
     message.status !== MESSAGE_STATUS.LOADING &&
     message.status !== MESSAGE_STATUS.STREAMING
+  const showDeepSeekThinking =
+    !isMessageFinal && DEEPSEEK_MODEL_PATTERN.test(message.model ?? '')
 
   return (
     <div
@@ -110,6 +115,23 @@ export function PlaygroundMessageContent({
         </Sources>
       )}
 
+      {showDeepSeekThinking && (
+        <div
+          aria-live='polite'
+          className='flex min-h-16 items-center py-2'
+          role='status'
+        >
+          <img
+            alt=''
+            aria-hidden='true'
+            className='h-20 w-60 max-w-full object-contain object-left'
+            data-testid='deepseek-thinking'
+            src={deepSeekThinkingImage}
+          />
+          <span className='sr-only'>{t('Responding...')}</span>
+        </div>
+      )}
+
       {hasReasoning && (
         <Reasoning
           defaultOpen
@@ -121,12 +143,18 @@ export function PlaygroundMessageContent({
         </Reasoning>
       )}
 
-      {showLoader && (
-        <div className='flex items-center gap-2 py-2'>
-          <Loader />
-          <Shimmer className='text-sm' duration={1}>
-            {t('Responding...')}
-          </Shimmer>
+      {showLoader && !showDeepSeekThinking && (
+        <div
+          aria-live='polite'
+          className='flex min-h-16 items-center py-2'
+          role='status'
+        >
+          <div className='flex items-center gap-2'>
+            <Loader />
+            <Shimmer className='text-sm' duration={1}>
+              {t('Responding...')}
+            </Shimmer>
+          </div>
         </div>
       )}
 

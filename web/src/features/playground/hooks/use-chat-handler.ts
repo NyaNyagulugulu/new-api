@@ -79,6 +79,28 @@ function mergePendingStreamChunk(
   return nextChunk
 }
 
+function applyPendingStreamChunks(
+  message: Message,
+  pending: PendingStreamChunks
+): Message {
+  let updatedMessage = message
+  if (pending.reasoning) {
+    updatedMessage = applyStreamingChunk(
+      updatedMessage,
+      'reasoning',
+      pending.reasoning
+    )
+  }
+  if (pending.content) {
+    updatedMessage = applyStreamingChunk(
+      updatedMessage,
+      'content',
+      pending.content
+    )
+  }
+  return updatedMessage
+}
+
 /**
  * Handles independent chat requests so conversations can keep generating while
  * the user switches to another chat.
@@ -132,41 +154,36 @@ export function useChatHandler({
     [setSessionGenerating]
   )
 
+  const drainPendingStreamUpdates = useCallback((generation: number) => {
+    const request = generationsRef.current.get(generation)
+    if (!request) return null
+    if (request.timer !== null) {
+      window.clearTimeout(request.timer)
+      request.timer = null
+    }
+    const pending = request.pending
+    request.pending = { content: '', reasoning: '' }
+    if (!pending.content && !pending.reasoning) return null
+    return {
+      pending,
+      sessionId: request.sessionId,
+    }
+  }, [])
+
   const flushStreamUpdates = useCallback(
     (generation: number) => {
-      const request = generationsRef.current.get(generation)
-      if (!request) return
-      if (request.timer !== null) {
-        window.clearTimeout(request.timer)
-        request.timer = null
-      }
-      const { content, reasoning } = request.pending
-      if (!reasoning && !content) return
+      const streamUpdate = drainPendingStreamUpdates(generation)
+      if (!streamUpdate) return
 
-      request.pending = { content: '', reasoning: '' }
-      onMessageUpdate((prev) => {
-        if (!generationsRef.current.has(generation)) return prev
-        return updateLastAssistantMessage(prev, (message) => {
-          let updatedMessage = message
-          if (reasoning) {
-            updatedMessage = applyStreamingChunk(
-              updatedMessage,
-              'reasoning',
-              reasoning
-            )
-          }
-          if (content) {
-            updatedMessage = applyStreamingChunk(
-              updatedMessage,
-              'content',
-              content
-            )
-          }
-          return updatedMessage
-        })
-      }, request.sessionId)
+      onMessageUpdate(
+        (prev) =>
+          updateLastAssistantMessage(prev, (message) =>
+            applyPendingStreamChunks(message, streamUpdate.pending)
+          ),
+        streamUpdate.sessionId
+      )
     },
-    [onMessageUpdate]
+    [drainPendingStreamUpdates, onMessageUpdate]
   )
 
   const scheduleStreamFlush = useCallback(
@@ -230,13 +247,17 @@ export function useChatHandler({
     (generation: number, usage?: ChatCompletionUsage) => {
       const request = generationsRef.current.get(generation)
       if (!request) return
-      flushStreamUpdates(generation)
+      const streamUpdate = drainPendingStreamUpdates(generation)
       removeGeneration(generation, request.sessionId)
       onMessageUpdate(
         (prev) =>
           updateLastAssistantMessage(prev, (message) => {
+            const streamedMessage = streamUpdate
+              ? applyPendingStreamChunks(message, streamUpdate.pending)
+              : message
             const completedMessage = {
-              ...message,
+              ...streamedMessage,
+              model: config.model,
               ...(usage
                 ? {
                     usage: normalizeMessageUsage(
@@ -259,7 +280,7 @@ export function useChatHandler({
       config.group,
       config.model,
       config.reasoningEffort,
-      flushStreamUpdates,
+      drainPendingStreamUpdates,
       onMessageUpdate,
       removeGeneration,
     ]
@@ -269,7 +290,7 @@ export function useChatHandler({
     (generation: number, error: string, errorCode?: string) => {
       const request = generationsRef.current.get(generation)
       if (!request) return
-      flushStreamUpdates(generation)
+      const streamUpdate = drainPendingStreamUpdates(generation)
       removeGeneration(generation, request.sessionId)
       const displayError = getDisplayError(error)
       handleServerError(new Error(displayError))
@@ -277,7 +298,11 @@ export function useChatHandler({
       onMessageUpdate(
         (prev) =>
           updateAssistantMessageWithError(
-            prev,
+            streamUpdate
+              ? updateLastAssistantMessage(prev, (message) =>
+                  applyPendingStreamChunks(message, streamUpdate.pending)
+                )
+              : prev,
             displayError,
             errorCode,
             errorTitle
@@ -285,16 +310,22 @@ export function useChatHandler({
         request.sessionId
       )
     },
-    [flushStreamUpdates, getDisplayError, onMessageUpdate, removeGeneration, t]
+    [
+      drainPendingStreamUpdates,
+      getDisplayError,
+      onMessageUpdate,
+      removeGeneration,
+      t,
+    ]
   )
 
   const cancelGeneration = useCallback(
     (generation: number, finalizeMessage: boolean) => {
       const request = generationsRef.current.get(generation)
       if (!request) return
-      if (finalizeMessage) {
-        flushStreamUpdates(generation)
-      }
+      const streamUpdate = finalizeMessage
+        ? drainPendingStreamUpdates(generation)
+        : null
       request.abortController?.abort()
       stopStream(String(generation))
       removeGeneration(generation, request.sessionId)
@@ -302,15 +333,21 @@ export function useChatHandler({
 
       onMessageUpdate(
         (prev) =>
-          updateLastAssistantMessage(prev, (message) =>
-            isAssistantMessagePending(message)
-              ? completeAssistantMessage(message)
-              : message
+          updateLastAssistantMessage(
+            streamUpdate
+              ? updateLastAssistantMessage(prev, (message) =>
+                  applyPendingStreamChunks(message, streamUpdate.pending)
+                )
+              : prev,
+            (message) =>
+              isAssistantMessagePending(message)
+                ? completeAssistantMessage(message)
+                : message
           ),
         request.sessionId
       )
     },
-    [flushStreamUpdates, onMessageUpdate, removeGeneration, stopStream]
+    [drainPendingStreamUpdates, onMessageUpdate, removeGeneration, stopStream]
   )
 
   const prepareGeneration = useCallback(
@@ -431,13 +468,27 @@ export function useChatHandler({
 
   const sendChat = useCallback(
     (messages: Message[], sessionId?: string) => {
+      onMessageUpdate(
+        (prev) =>
+          updateLastAssistantMessage(prev, (message) => ({
+            ...message,
+            model: config.model,
+          })),
+        sessionId
+      )
       if (config.stream) {
         sendStreamingChat(messages, sessionId)
       } else {
         void sendNonStreamingChat(messages, sessionId)
       }
     },
-    [config.stream, sendNonStreamingChat, sendStreamingChat]
+    [
+      config.model,
+      config.stream,
+      onMessageUpdate,
+      sendNonStreamingChat,
+      sendStreamingChat,
+    ]
   )
 
   const stopGeneration = useCallback(

@@ -81,12 +81,11 @@ func SyncChatConversations(
 	ctx context.Context,
 	userId int,
 	sessions []ChatConversationInput,
-	deletedIds []string,
 ) error {
 	if userId <= 0 {
 		return fmt.Errorf("invalid user")
 	}
-	if len(sessions) > MaxChatConversations || len(deletedIds) > MaxChatConversations {
+	if len(sessions) > MaxChatConversations {
 		return fmt.Errorf("too many chat conversations")
 	}
 
@@ -99,13 +98,6 @@ func SyncChatConversations(
 			return fmt.Errorf("chat conversation sync is too large")
 		}
 
-		if len(deletedIds) > 0 {
-			if err := tx.Where("user_id = ? AND id IN ?", userId, deletedIds).
-				Delete(&ChatConversation{}).Error; err != nil {
-				return err
-			}
-		}
-
 		for i := range sessions {
 			input := sessions[i]
 			if err := ValidateChatConversationInput(&input); err != nil {
@@ -113,7 +105,7 @@ func SyncChatConversations(
 			}
 
 			var existing ChatConversation
-			err := tx.Where("id = ?", input.Id).First(&existing).Error
+			err := lockForUpdate(tx).Where("id = ?", input.Id).First(&existing).Error
 			switch {
 			case errors.Is(err, gorm.ErrRecordNotFound):
 				now := time.Now().UnixMilli()
@@ -121,13 +113,17 @@ func SyncChatConversations(
 				if createdAt <= 0 {
 					createdAt = now
 				}
+				updatedAt := input.UpdatedAt
+				if updatedAt <= 0 {
+					updatedAt = now
+				}
 				if err := tx.Create(&ChatConversation{
 					Id:        input.Id,
 					UserId:    userId,
 					Title:     input.Title,
 					Messages:  input.Messages,
 					CreatedAt: createdAt,
-					UpdatedAt: input.UpdatedAt,
+					UpdatedAt: updatedAt,
 				}).Error; err != nil {
 					return err
 				}
@@ -136,8 +132,15 @@ func SyncChatConversations(
 			case existing.UserId != userId:
 				return ErrChatConversationForbidden
 			default:
+				if input.UpdatedAt < existing.UpdatedAt {
+					continue
+				}
+				title := input.Title
+				if title == "" {
+					title = existing.Title
+				}
 				updates := map[string]any{
-					"title":      input.Title,
+					"title":      title,
 					"messages":   input.Messages,
 					"updated_at": input.UpdatedAt,
 				}
@@ -150,4 +153,18 @@ func SyncChatConversations(
 		}
 		return nil
 	})
+}
+
+func DeleteChatConversation(ctx context.Context, userId int, id string) error {
+	if userId <= 0 {
+		return fmt.Errorf("invalid user")
+	}
+	id = strings.TrimSpace(id)
+	if id == "" || len(id) > MaxChatConversationIDLen {
+		return fmt.Errorf("invalid chat conversation id")
+	}
+
+	return DB.WithContext(ctx).
+		Where("user_id = ? AND id = ?", userId, id).
+		Delete(&ChatConversation{}).Error
 }

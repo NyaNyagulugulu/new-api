@@ -66,6 +66,7 @@ export interface Message {
   key: string
   from: MessageRole
   versions: MessageVersion[]
+  model?: string
   createdAt?: number
   startedAt?: number
   completedAt?: number

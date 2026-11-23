@@ -196,4 +196,66 @@ describe('latest-wins stream request coordination', () => {
 
     expect(updates).toEqual(['current'])
   })
+
+  test('finishes a received stream that closes without a done event', async () => {
+    const sources: FakeStreamSource[] = []
+    let completed = 0
+    const controller = createStreamRequestController({
+      getHeaders: () => Promise.resolve({ Authorization: 'Bearer current' }),
+      createSource: () => {
+        const source = new FakeStreamSource()
+        sources.push(source)
+        return source
+      },
+      setStreaming: () => undefined,
+    })
+
+    await controller.send(payload, {
+      onUpdate: () => undefined,
+      onComplete: () => {
+        completed += 1
+      },
+      onError: () => undefined,
+    })
+
+    sources[0]?.emit(
+      'message',
+      JSON.stringify({ choices: [{ delta: { content: 'Complete answer' } }] })
+    )
+    if (sources[0]) {
+      sources[0].readyState = 2
+      sources[0].emit('readystatechange')
+    }
+
+    expect(completed).toBe(1)
+  })
+
+  test('reports a closed stream that never delivered a message', async () => {
+    const sources: FakeStreamSource[] = []
+    let error = ''
+    const controller = createStreamRequestController({
+      getHeaders: () => Promise.resolve({ Authorization: 'Bearer current' }),
+      createSource: () => {
+        const source = new FakeStreamSource()
+        sources.push(source)
+        return source
+      },
+      setStreaming: () => undefined,
+    })
+
+    await controller.send(payload, {
+      onUpdate: () => undefined,
+      onComplete: () => undefined,
+      onError: (message) => {
+        error = message
+      },
+    })
+
+    if (sources[0]) {
+      sources[0].readyState = 2
+      sources[0].emit('readystatechange')
+    }
+
+    expect(error).toBe('Connection closed')
+  })
 })

@@ -100,10 +100,18 @@ export function createStreamRequestController(
     source = nextSource
     runtime.setStreaming(true)
     let completed = false
+    let receivedMessage = false
     let latestUsage: ChatCompletionUsage | undefined
 
     const isCurrent = () =>
       generation === requestGeneration && source === nextSource
+
+    const finish = () => {
+      if (!isCurrent() || completed) return
+      completed = true
+      closeActiveSource(nextSource)
+      callbacks.onComplete(latestUsage)
+    }
 
     const handleError = (errorMessage: string, errorCode?: string) => {
       if (!isCurrent() || completed) return
@@ -115,10 +123,9 @@ export function createStreamRequestController(
     nextSource.addEventListener('message', (event) => {
       if (!isCurrent() || completed) return
       const data = event.data ?? ''
+      receivedMessage = true
       if (isStreamDoneMessage(data)) {
-        completed = true
-        closeActiveSource(nextSource)
-        callbacks.onComplete(latestUsage)
+        finish()
         return
       }
 
@@ -139,12 +146,19 @@ export function createStreamRequestController(
 
     nextSource.addEventListener('error', (event) => {
       if (!isCurrent() || completed) return
-      if (!isStreamClosedReadyState(nextSource.readyState)) {
-        // eslint-disable-next-line no-console
-        console.error('SSE Error:', event)
-        const { errorCode, errorMessage } = parseStreamErrorDetails(event.data)
-        handleError(errorMessage, errorCode)
+      if (isStreamClosedReadyState(nextSource.readyState)) {
+        if (receivedMessage) {
+          finish()
+        } else {
+          handleError(ERROR_MESSAGES.CONNECTION_CLOSED)
+        }
+        return
       }
+
+      // eslint-disable-next-line no-console
+      console.error('SSE Error:', event)
+      const { errorCode, errorMessage } = parseStreamErrorDetails(event.data)
+      handleError(errorMessage, errorCode)
     })
 
     nextSource.addEventListener('readystatechange', (event) => {
@@ -156,6 +170,15 @@ export function createStreamRequestController(
 
       if (errorMessage) {
         handleError(errorMessage)
+        return
+      }
+
+      if (isStreamClosedReadyState(event.readyState)) {
+        if (receivedMessage) {
+          finish()
+        } else {
+          handleError(ERROR_MESSAGES.CONNECTION_CLOSED)
+        }
       }
     })
 

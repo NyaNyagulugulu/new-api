@@ -2,7 +2,6 @@ package controller
 
 import (
 	"errors"
-	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -11,8 +10,10 @@ import (
 )
 
 type chatConversationSyncRequest struct {
-	Sessions   []model.ChatConversationInput `json:"sessions"`
-	DeletedIds []string                      `json:"deleted_ids"`
+	Sessions []model.ChatConversationInput `json:"sessions"`
+	// Kept for wire compatibility with older clients. Deletions must use the
+	// explicit delete endpoint so stale snapshots cannot remove other sessions.
+	DeletedIds []string `json:"deleted_ids"`
 }
 
 func GetChatConversations(c *gin.Context) {
@@ -49,25 +50,34 @@ func SyncChatConversations(c *gin.Context) {
 			return
 		}
 	}
-	for i := range request.DeletedIds {
-		request.DeletedIds[i] = strings.TrimSpace(request.DeletedIds[i])
-		if request.DeletedIds[i] == "" {
-			common.ApiErrorMsg(c, "Invalid parameters")
-			return
-		}
-	}
-
 	err := model.SyncChatConversations(
 		c.Request.Context(),
 		userId,
 		request.Sessions,
-		request.DeletedIds,
 	)
 	if errors.Is(err, model.ErrChatConversationForbidden) {
 		common.ApiErrorMsg(c, "Chat conversation not found")
 		return
 	}
 	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func DeleteChatConversation(c *gin.Context) {
+	userId := c.GetInt("id")
+	if userId <= 0 {
+		common.ApiErrorMsg(c, "Invalid user")
+		return
+	}
+
+	if err := model.DeleteChatConversation(
+		c.Request.Context(),
+		userId,
+		c.Param("id"),
+	); err != nil {
 		common.ApiError(c, err)
 		return
 	}
