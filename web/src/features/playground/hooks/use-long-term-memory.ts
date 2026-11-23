@@ -66,7 +66,6 @@ export function useLongTermMemoryReflection({
   settings,
 }: UseLongTermMemoryParams) {
   const completedCountsRef = useRef<Map<string, number>>(new Map())
-  const initialisedRef = useRef(false)
   const attemptedSourceKeysRef = useRef<ReadonlySet<string>>(new Set())
   const activeSessionsRef = useRef<ReadonlySet<string>>(new Set())
 
@@ -80,20 +79,10 @@ export function useLongTermMemoryReflection({
         session.messages.filter(isMemoryExtractionMessage).length
       )
     }
-    if (!initialisedRef.current) {
-      initialisedRef.current = true
-      completedCountsRef.current = counts
-      return
-    }
-
     for (const session of sessions) {
       if (activeSessionsRef.current.has(session.id)) continue
       const completedCount = counts.get(session.id) ?? 0
-      const previousCount = completedCountsRef.current.get(session.id)
-      if (previousCount === undefined) {
-        completedCountsRef.current.set(session.id, completedCount)
-        continue
-      }
+      const previousCount = completedCountsRef.current.get(session.id) ?? 0
       if (completedCount <= previousCount) {
         completedCountsRef.current.set(session.id, completedCount)
         continue

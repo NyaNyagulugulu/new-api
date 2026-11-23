@@ -75,6 +75,16 @@ function createSession(answer: string, key: string): ChatSession {
   }
 }
 
+function createEmptySession(): ChatSession {
+  return {
+    id: 'chat-1',
+    title: 'Chat',
+    createdAt: 1,
+    updatedAt: 1,
+    messages: [],
+  }
+}
+
 test('extracts and saves memories after the configured number of replies', async () => {
   apiMocks.sendChatCompletion.mockResolvedValue({
     choices: [
@@ -94,28 +104,21 @@ test('extracts and saves memories after the configured number of replies', async
         sessions,
         settings,
       }),
-    { initialProps: { sessions: [createSession('First answer', 'one')] } }
+    {
+      initialProps: {
+        sessions: [createEmptySession()],
+      },
+    }
   )
 
-  const second = createSession('Second answer', 'two')
-  rerender({
-    sessions: [
-      {
-        ...second,
-        messages: [
-          ...createSession('First answer', 'one').messages,
-          ...second.messages,
-        ],
-      },
-    ],
-  })
+  rerender({ sessions: [createSession('First answer', 'one')] })
 
   await waitFor(() => expect(apiMocks.saveUserMemories).toHaveBeenCalled())
   expect(apiMocks.saveUserMemories).toHaveBeenCalledWith([
     expect.objectContaining({
       content: 'The user prefers concise answers.',
       conversation_id: 'chat-1',
-      source_key: 'chat-1:two-assistant',
+      source_key: 'chat-1:one-assistant',
     }),
   ])
 })
