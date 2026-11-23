@@ -32,8 +32,8 @@ var builtinBillingExpr = map[string]string{
 	"deepseek-v4-flash":            deepSeekFlashExpr,
 	"deepseek-v4-flash-vision-exp": deepSeekFlashExpr,
 	"deepseek-v4-pro":              deepSeekPeak + ` ? tier("peak", p * 1.32 + cr * 0.044 + c * 3.96) : tier("off_peak", p * 0.66 + cr * 0.022 + c * 1.98)`,
-	// The Search and Fetch API routing names: $0.75 per 1,000 successful
-	// requests each, the same pricing page. The calls carry no tokens.
-	constant.DeepSeekSearchModel: `tier("request", fixed(0.00075))`,
-	constant.DeepSeekFetchModel:  `tier("request", fixed(0.00075))`,
+	// Search and Fetch routing is free in this deployment. The calls carry no
+	// tokens, so an explicit zero-request price avoids the legacy minimum charge.
+	constant.DeepSeekSearchModel: `tier("free", fixed(0))`,
+	constant.DeepSeekFetchModel:  `tier("free", fixed(0))`,
 }

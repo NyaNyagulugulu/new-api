@@ -207,6 +207,6 @@ func TestDeepSeekBuiltinBilling(t *testing.T) {
 		require.True(t, ok, model)
 		result := quota(expression, &dto.Usage{})
 		assert.Equal(t, billingexpr.BillingUnitRequest, result.BillingUnit, model)
-		assert.Equal(t, 375, result.ActualQuotaAfterGroup, model)
+		assert.Equal(t, 0, result.ActualQuotaAfterGroup, model)
 	}
 }
