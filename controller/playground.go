@@ -131,6 +131,7 @@ func enrichPlaygroundWebSearch(c *gin.Context) error {
 
 func playgroundSearchQuery(request map[string]any) string {
 	messages, _ := request["messages"].([]any)
+	var fallback string
 	for index := len(messages) - 1; index >= 0; index-- {
 		message, _ := messages[index].(map[string]any)
 		if role, _ := message["role"].(string); role != "user" {
@@ -138,17 +139,76 @@ func playgroundSearchQuery(request map[string]any) string {
 		}
 		switch content := message["content"].(type) {
 		case string:
-			return strings.TrimSpace(content)
+			question := playgroundUserQuestion(content)
+			if topic := playgroundSearchTopic(question); topic != "" {
+				return topic
+			}
+			if fallback == "" {
+				fallback = question
+			}
 		case []any:
 			for _, part := range content {
 				partMap, _ := part.(map[string]any)
 				if text, _ := partMap["text"].(string); strings.TrimSpace(text) != "" {
-					return strings.TrimSpace(text)
+					question := playgroundUserQuestion(text)
+					if topic := playgroundSearchTopic(question); topic != "" {
+						return topic
+					}
+					if fallback == "" {
+						fallback = question
+					}
+					break
 				}
 			}
 		}
 	}
-	return ""
+	return fallback
+}
+
+func playgroundUserQuestion(content string) string {
+	const memoryMarker = "\n\n---\nLong-term memories for the current user are below."
+	if index := strings.Index(content, memoryMarker); index >= 0 {
+		content = content[:index]
+	}
+	return strings.TrimSpace(content)
+}
+
+func playgroundSearchTopic(question string) string {
+	trimmed := strings.TrimSpace(question)
+	lower := strings.ToLower(trimmed)
+	for _, suffix := range []string{
+		"你自己上网查一查",
+		"你上网查一查",
+		"自己上网查一查",
+		"你查一下",
+		"查一查",
+		"查一下",
+		"搜一下",
+		"search it",
+		"look it up",
+	} {
+		if strings.HasSuffix(lower, suffix) {
+			trimmed = strings.TrimSpace(trimmed[:len(trimmed)-len(suffix)])
+			lower = strings.ToLower(trimmed)
+		}
+	}
+	for _, prefix := range []string{
+		"请帮我",
+		"帮我",
+		"麻烦",
+		"联网搜索",
+		"联网查",
+		"搜索",
+		"查询",
+		"search for",
+		"look up",
+	} {
+		if strings.HasPrefix(lower, prefix) {
+			trimmed = strings.TrimSpace(trimmed[len(prefix):])
+			lower = strings.ToLower(trimmed)
+		}
+	}
+	return strings.TrimSpace(strings.Trim(trimmed, "，。！？!?：:;；,.-—"))
 }
 
 func injectPlaygroundSearchContext(request map[string]any, contextBlock string) {
