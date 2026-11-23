@@ -34,8 +34,14 @@ import {
   hasChatCompletionChoice,
   isAssistantMessageFinal,
   isAssistantMessagePending,
+  normalizeMessageUsage,
 } from '../lib'
-import type { Message, PlaygroundConfig, ParameterEnabled } from '../types'
+import type {
+  ChatCompletionUsage,
+  Message,
+  PlaygroundConfig,
+  ParameterEnabled,
+} from '../types'
 import { useStreamRequest } from './use-stream-request'
 
 interface UseChatHandlerOptions {
@@ -203,20 +209,32 @@ export function useChatHandler({
 
   // Handle stream complete
   const handleStreamComplete = useCallback(
-    (generation: number) => {
+    (generation: number, usage?: ChatCompletionUsage) => {
       if (generation !== requestGenerationRef.current) return
       flushStreamUpdates(generation)
       setIsRequesting(false)
       onMessageUpdate((prev) => {
         if (generation !== requestGenerationRef.current) return prev
-        return updateLastAssistantMessage(prev, (message) =>
-          isAssistantMessageFinal(message)
-            ? message
-            : completeAssistantMessage(message)
-        )
+        return updateLastAssistantMessage(prev, (message) => {
+          const completedMessage = {
+            ...message,
+            ...(usage
+              ? {
+                  usage: normalizeMessageUsage(
+                    usage,
+                    config.model,
+                    config.group
+                  ),
+                }
+              : {}),
+          }
+          return isAssistantMessageFinal(completedMessage)
+            ? completedMessage
+            : completeAssistantMessage(completedMessage)
+        })
       })
     },
-    [flushStreamUpdates, onMessageUpdate]
+    [config.group, config.model, flushStreamUpdates, onMessageUpdate]
   )
 
   // Handle stream error
@@ -258,7 +276,7 @@ export function useChatHandler({
       void sendStreamRequest(
         payload,
         (type, chunk) => handleStreamUpdate(generation, type, chunk),
-        () => handleStreamComplete(generation),
+        (usage) => handleStreamComplete(generation, usage),
         (error, errorCode) => handleStreamError(generation, error, errorCode)
       )
     },
@@ -313,7 +331,8 @@ export function useChatHandler({
           return updateLastAssistantMessage(prev, (message) => {
             const updatedMessage = applyChatCompletionResponse(
               message,
-              response
+              response,
+              config.group
             )
 
             return updatedMessage ?? message

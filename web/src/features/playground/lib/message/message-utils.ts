@@ -21,6 +21,7 @@ import { nanoid } from 'nanoid'
 import { MESSAGE_ROLES, MESSAGE_STATUS } from '../../constants'
 import type {
   Message,
+  MessageAttachment,
   MessageVersion,
   ChatCompletionMessage,
   ContentPart,
@@ -29,10 +30,14 @@ import type {
 /**
  * Create a new message version
  */
-export function createMessageVersion(content: string): MessageVersion {
+export function createMessageVersion(
+  content: string,
+  attachments: MessageAttachment[] = []
+): MessageVersion {
   return {
     id: nanoid(),
     content,
+    ...(attachments.length > 0 ? { attachments } : {}),
   }
 }
 
@@ -54,7 +59,10 @@ export function getMessageContent(message: Message): string {
  * Check whether a message has non-empty content in its current version.
  */
 export function hasMessageContent(message: Message): boolean {
-  return getMessageContent(message).trim() !== ''
+  return (
+    getMessageContent(message).trim() !== '' ||
+    (getCurrentVersion(message).attachments?.length ?? 0) > 0
+  )
 }
 
 /**
@@ -76,12 +84,13 @@ export function updateCurrentVersionContent(
  */
 export function createUserMessage(
   content: string,
-  createdAt: number = Date.now()
+  createdAt: number = Date.now(),
+  attachments: MessageAttachment[] = []
 ): Message {
   return {
     key: nanoid(),
     from: MESSAGE_ROLES.USER,
-    versions: [createMessageVersion(content)],
+    versions: [createMessageVersion(content, attachments)],
     createdAt,
   }
 }
@@ -107,28 +116,44 @@ export function createLoadingAssistantMessage(
 }
 
 /**
- * Build message content with optional images
+ * Build message content with optional images and files.
  */
 export function buildMessageContent(
   text: string,
-  imageUrls: string[] = []
+  attachments: MessageAttachment[] = []
 ): string | ContentPart[] {
-  const validImages = imageUrls.filter((url) => url.trim() !== '')
-
-  if (validImages.length === 0) {
+  if (attachments.length === 0) {
     return text
   }
 
-  const parts: ContentPart[] = [
-    {
+  const parts: ContentPart[] = []
+  if (text.trim()) {
+    parts.push({
       type: 'text',
-      text: text || '',
-    },
-    ...validImages.map((url) => ({
-      type: 'image_url' as const,
-      image_url: { url: url.trim() },
-    })),
-  ]
+      text,
+    })
+  }
+
+  for (const attachment of attachments) {
+    if (
+      attachment.kind === 'image' &&
+      attachment.mediaType.startsWith('image/')
+    ) {
+      parts.push({
+        type: 'image_url',
+        image_url: { url: attachment.dataUrl },
+      })
+      continue
+    }
+
+    parts.push({
+      type: 'file',
+      file: {
+        filename: attachment.name,
+        file_data: attachment.dataUrl,
+      },
+    })
+  }
 
   return parts
 }
@@ -156,7 +181,10 @@ export function formatMessageForAPI(message: Message): ChatCompletionMessage {
   const currentVersion = getCurrentVersion(message)
   return {
     role: message.from,
-    content: currentVersion.content,
+    content: buildMessageContent(
+      currentVersion.content,
+      currentVersion.attachments ?? []
+    ),
   }
 }
 

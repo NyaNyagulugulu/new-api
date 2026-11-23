@@ -126,7 +126,14 @@ function trimChatSessions(sessions: ChatSession[]): ChatSession[] {
 
 function getMessageSize(message: Message): number {
   const versionsSize = message.versions.reduce(
-    (total, version) => total + version.content.length,
+    (total, version) =>
+      total +
+      version.content.length +
+      (version.attachments?.reduce(
+        (attachmentTotal, attachment) =>
+          attachmentTotal + attachment.dataUrl.length,
+        0
+      ) ?? 0),
     0
   )
   const reasoningSize = message.reasoning?.content.length ?? 0

@@ -87,8 +87,14 @@ export function MessageActions({
   const { copiedText, copyToClipboard } = useCopyToClipboard()
   const { guardAction } = useMessageActionGuard(isGenerating)
 
-  const { content, hasContent, isAssistant, isLoading, isUser } =
-    getMessageActionState(message)
+  const {
+    content,
+    hasContent,
+    hasCopyableContent,
+    isAssistant,
+    isLoading,
+    isUser,
+  } = getMessageActionState(message)
   const isCopied = copiedText === content
 
   const handleCopy = () => {
@@ -108,7 +114,7 @@ export function MessageActions({
   const visibilityClass = getMessageActionsVisibilityClass(alwaysVisible)
   const actions: MessageActionItem[] = []
 
-  if (hasContent) {
+  if (hasCopyableContent) {
     actions.push({
       className: isCopied ? 'text-green-600' : '',
       icon: isCopied ? Check : Copy,

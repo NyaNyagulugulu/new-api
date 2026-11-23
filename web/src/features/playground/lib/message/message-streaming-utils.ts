@@ -26,6 +26,7 @@ import {
   completeReasoningTiming,
   startReasoningTiming,
 } from './message-timing-utils'
+import { normalizeMessageUsage } from './message-usage-utils'
 import {
   getCurrentVersion,
   hasMessageContent,
@@ -186,11 +187,24 @@ export function hasChatCompletionChoice(
 
 export function applyChatCompletionChoice(
   message: Message,
-  choice: ChatCompletionChoice
+  choice: ChatCompletionChoice,
+  usage?: ChatCompletionResponse['usage'],
+  model?: string,
+  group?: string
 ): Message {
+  const completedMessage = usage
+    ? {
+        ...message,
+        usage: normalizeMessageUsage(usage, model, group),
+      }
+    : message
+
   return completeAssistantTiming({
     ...finalizeMessage(
-      updateCurrentVersionContent(message, choice.message?.content || ''),
+      updateCurrentVersionContent(
+        completedMessage,
+        choice.message?.content || ''
+      ),
       choice.message?.reasoning_content ?? choice.message?.reasoning
     ),
     status: MESSAGE_STATUS.COMPLETE,
@@ -199,7 +213,8 @@ export function applyChatCompletionChoice(
 
 export function applyChatCompletionResponse(
   message: Message,
-  response: ChatCompletionResponse
+  response: ChatCompletionResponse,
+  group?: string
 ): Message | null {
   const choice = response.choices?.[0]
 
@@ -207,7 +222,13 @@ export function applyChatCompletionResponse(
     return null
   }
 
-  return applyChatCompletionChoice(message, choice)
+  return applyChatCompletionChoice(
+    message,
+    choice,
+    response.usage,
+    response.model,
+    group
+  )
 }
 
 /**

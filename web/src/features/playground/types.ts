@@ -23,9 +23,32 @@ export type MessageStatus = 'loading' | 'streaming' | 'complete' | 'error'
 
 export type PlaygroundMessageLayoutMode = 'alternating' | 'left'
 
+export interface MessageAttachment {
+  id: string
+  kind: 'image' | 'file'
+  name: string
+  mediaType: string
+  dataUrl: string
+}
+
 export interface MessageVersion {
   id: string
   content: string
+  attachments?: MessageAttachment[]
+}
+
+export interface MessageUsage {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  cachedTokens: number
+  cacheCreationTokens: number
+  reasoningTokens: number
+  imageTokens: number
+  audioTokens: number
+  model?: string
+  group?: string
+  reportedCostUSD?: number
 }
 
 export interface Message {
@@ -49,6 +72,7 @@ export interface Message {
   isContentComplete?: boolean
   status?: MessageStatus
   errorCode?: string | null
+  usage?: MessageUsage
 }
 
 export interface ChatSession {
@@ -66,10 +90,15 @@ export interface ChatCompletionMessage {
 }
 
 export interface ContentPart {
-  type: 'text' | 'image_url'
+  type: 'text' | 'image_url' | 'file'
   text?: string
   image_url?: {
     url: string
+  }
+  file?: {
+    filename?: string
+    file_data?: string
+    file_id?: string
   }
 }
 
@@ -78,6 +107,9 @@ export interface ChatCompletionRequest {
   group?: string
   messages: ChatCompletionMessage[]
   stream: boolean
+  stream_options?: {
+    include_usage: boolean
+  }
   temperature?: number
   top_p?: number
   max_tokens?: number
@@ -91,6 +123,7 @@ export interface ChatCompletionChunk {
   object: string
   created: number
   model: string
+  usage?: ChatCompletionUsage | null
   choices: Array<{
     index: number
     delta: {
@@ -101,6 +134,32 @@ export interface ChatCompletionChunk {
     }
     finish_reason: string | null
   }>
+}
+
+export interface ChatCompletionUsage {
+  prompt_tokens?: number
+  completion_tokens?: number
+  total_tokens?: number
+  input_tokens?: number
+  output_tokens?: number
+  prompt_tokens_details?: {
+    cached_tokens?: number
+    cache_write_tokens?: number
+    cached_creation_tokens?: number
+    cache_creation_input_tokens?: number
+    text_tokens?: number
+    image_tokens?: number
+    audio_tokens?: number
+  }
+  completion_tokens_details?: {
+    reasoning_tokens?: number
+    text_tokens?: number
+    image_tokens?: number
+    audio_tokens?: number
+  }
+  input_tokens_details?: ChatCompletionUsage['prompt_tokens_details']
+  output_tokens_details?: ChatCompletionUsage['completion_tokens_details']
+  cost?: number | string
 }
 
 export interface ChatCompletionResponse {
@@ -118,11 +177,7 @@ export interface ChatCompletionResponse {
     }
     finish_reason: string
   }>
-  usage?: {
-    prompt_tokens: number
-    completion_tokens: number
-    total_tokens: number
-  }
+  usage?: ChatCompletionUsage
 }
 
 // Configuration types

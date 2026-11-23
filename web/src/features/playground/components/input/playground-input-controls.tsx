@@ -16,12 +16,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { SendIcon, SquareIcon } from 'lucide-react'
+import { PaperclipIcon, SendIcon, SquareIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { PromptInputButton } from '@/components/ai-elements/prompt-input'
+import {
+  PromptInputButton,
+  usePromptInputAttachments,
+} from '@/components/ai-elements/prompt-input'
 import { ModelGroupSelector } from '@/components/model-group-selector'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 import { getInputControlState } from '../../lib'
 import type { GroupOption, ModelOption } from '../../types'
@@ -56,10 +64,12 @@ export function PlaygroundInputControls({
   tools,
 }: PlaygroundInputControlsProps) {
   const { t } = useTranslation()
+  const attachments = usePromptInputAttachments()
   const { canSubmit, isSelectorDisabled, shouldShowStop } =
     getInputControlState({
       disabled,
       groups,
+      hasAttachments: attachments.files.length > 0,
       hasStopHandler: Boolean(onStop),
       isGenerating,
       isModelLoading,
@@ -110,7 +120,27 @@ export function PlaygroundInputControls({
       </div>
 
       <div className='flex items-center justify-between gap-2 md:justify-start'>
-        {tools}
+        <div className='flex items-center gap-1'>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <PromptInputButton
+                  aria-label={t('Add photos or files')}
+                  className='text-muted-foreground hover:text-foreground hover:bg-muted/70 font-medium'
+                  disabled={disabled}
+                  onClick={attachments.openFileDialog}
+                  variant='ghost'
+                />
+              }
+            >
+              <PaperclipIcon size={16} />
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{t('Add photos or files')}</p>
+            </TooltipContent>
+          </Tooltip>
+          {tools}
+        </div>
         <div className='flex items-center gap-1.5 md:hidden'>
           {renderSubmitButton()}
         </div>

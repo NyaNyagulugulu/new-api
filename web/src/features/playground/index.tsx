@@ -16,8 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { PanelLeftIcon, SquarePenIcon } from 'lucide-react'
-import { useState } from 'react'
+import { useNavigate, useRouter } from '@tanstack/react-router'
+import { ArrowLeftIcon, PanelLeftIcon, SquarePenIcon } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -28,6 +29,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { useSidebar } from '@/components/ui/sidebar'
 
 import { PlaygroundChat } from './components/chat/playground-chat'
 import { PlaygroundHistorySidebar } from './components/history/playground-history-sidebar'
@@ -42,7 +44,22 @@ import { getChatSessionTitle } from './lib'
 
 export function Playground() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
+  const router = useRouter()
   const [historyOpen, setHistoryOpen] = useState(false)
+  const { open: sidebarOpen, setOpen, setOpenMobile } = useSidebar()
+  const initialSidebarOpenRef = useRef(sidebarOpen)
+
+  useEffect(() => {
+    const shouldRestore = initialSidebarOpenRef.current
+    setOpen(false)
+    setOpenMobile(false)
+
+    return () => {
+      if (shouldRestore) setOpen(true)
+    }
+  }, [setOpen, setOpenMobile])
+
   const {
     config,
     parameterEnabled,
@@ -109,6 +126,15 @@ export function Playground() {
     ? getChatSessionTitle(activeSession, t('New chat'))
     : t('New chat')
 
+  const handleBack = () => {
+    if (router.history.canGoBack()) {
+      router.history.back()
+      return
+    }
+
+    void navigate({ to: '/dashboard' })
+  }
+
   const historySidebar = (className: string) => (
     <PlaygroundHistorySidebar
       activeSessionId={activeSession?.id ?? null}
@@ -142,6 +168,16 @@ export function Playground() {
 
       <section className='flex min-h-0 min-w-0 flex-1 flex-col'>
         <header className='flex h-12 shrink-0 items-center gap-2 border-b px-2.5'>
+          <Button
+            aria-label={t('Back')}
+            onClick={handleBack}
+            size='icon-sm'
+            type='button'
+            variant='ghost'
+          >
+            <ArrowLeftIcon />
+          </Button>
+
           <Button
             aria-label={t('Open chat history')}
             className='lg:hidden'

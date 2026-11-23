@@ -24,7 +24,7 @@ import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { getPricing } from '../api'
 
-export function usePricingData(enabled = true) {
+export function usePricingData(enabled = true, silent = false) {
   const { status } = useStatus()
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -32,6 +32,7 @@ export function usePricingData(enabled = true) {
     queryFn: async () => requireServerSuccess(await getPricing()),
     staleTime: 5 * 60 * 1000,
     enabled,
+    meta: { errorToast: !silent },
   })
 
   // Ensure rates never reach zero to prevent division errors

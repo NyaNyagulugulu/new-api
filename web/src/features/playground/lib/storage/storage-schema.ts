@@ -55,9 +55,18 @@ const messageStatusSchema = z.enum([
   'error',
 ])
 
+const messageAttachmentSchema = z.object({
+  id: z.string(),
+  kind: z.enum(['image', 'file']),
+  name: z.string(),
+  mediaType: z.string(),
+  dataUrl: z.string(),
+})
+
 const messageVersionSchema = z.object({
   id: z.string(),
   content: z.string(),
+  attachments: z.array(messageAttachmentSchema).optional(),
 })
 
 const sourceSchema = z.object({
@@ -71,6 +80,20 @@ const reasoningSchema = z.object({
   startedAt: z.number().optional(),
   completedAt: z.number().optional(),
   durationMs: z.number().optional(),
+})
+
+const messageUsageSchema = z.object({
+  inputTokens: z.number(),
+  outputTokens: z.number(),
+  totalTokens: z.number(),
+  cachedTokens: z.number(),
+  cacheCreationTokens: z.number(),
+  reasoningTokens: z.number(),
+  imageTokens: z.number(),
+  audioTokens: z.number(),
+  model: z.string().optional(),
+  group: z.string().optional(),
+  reportedCostUSD: z.number().optional(),
 })
 
 const messageSchema = z.object({
@@ -88,6 +111,7 @@ const messageSchema = z.object({
   isContentComplete: z.boolean().optional(),
   status: messageStatusSchema.optional(),
   errorCode: z.string().nullable().optional(),
+  usage: messageUsageSchema.optional(),
 })
 
 export const messagesSchema = z.array(messageSchema)

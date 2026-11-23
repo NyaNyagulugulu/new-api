@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 export * from './input/input-control-utils'
+export * from './input/input-attachments'
 export * from './chat/chat-sessions'
 export * from './message/conversation-message-utils'
 export * from './message/message-action-utils'
@@ -29,6 +30,7 @@ export * from './message/message-streaming-utils'
 export * from './message/message-styles'
 export * from './message/message-timing-utils'
 export * from './message/message-update-utils'
+export * from './message/message-usage-utils'
 export * from './message/message-utils'
 export * from './options/playground-option-utils'
 export * from './parameters/playground-parameters'

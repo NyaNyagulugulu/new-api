@@ -16,11 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { FileUIPart } from 'ai'
+
 import type { GroupOption, ModelOption } from '../../types'
 
 type InputControlStateOptions = {
   disabled?: boolean
   groups: GroupOption[]
+  hasAttachments: boolean
   hasStopHandler: boolean
   isGenerating?: boolean
   isModelLoading?: boolean
@@ -36,22 +39,31 @@ type InputControlState = {
 
 type SubmittableInputMessage = {
   text?: string | null
+  files?: FileUIPart[]
 }
 
-export function getSubmittableInputText(
+type SubmittableInputContent = {
+  text: string
+  files: FileUIPart[]
+}
+
+export function getSubmittableInputContent(
   message: SubmittableInputMessage,
   disabled?: boolean
-): string | null {
-  if (disabled || !message.text?.trim()) {
+): SubmittableInputContent | null {
+  const text = message.text?.trim() ?? ''
+  const files = message.files ?? []
+  if (disabled || (!text && files.length === 0)) {
     return null
   }
 
-  return message.text
+  return { text, files }
 }
 
 export function getInputControlState({
   disabled,
   groups,
+  hasAttachments,
   hasStopHandler,
   isGenerating,
   isModelLoading,
@@ -61,7 +73,8 @@ export function getInputControlState({
   const hasModels = models.length > 0
 
   return {
-    canSubmit: !disabled && hasModels && text.trim().length > 0,
+    canSubmit:
+      !disabled && hasModels && (text.trim().length > 0 || hasAttachments),
     isSelectorDisabled: disabled || isModelLoading || groups.length === 0,
     shouldShowStop: Boolean(isGenerating && hasStopHandler),
   }

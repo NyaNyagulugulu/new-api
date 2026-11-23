@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { ERROR_MESSAGES } from '../../constants'
-import type { ChatCompletionChunk } from '../../types'
+import type { ChatCompletionChunk, ChatCompletionUsage } from '../../types'
 
 const STREAM_DONE_MESSAGE = '[DONE]'
 const STREAM_CLOSED_READY_STATE = 2
@@ -84,6 +84,17 @@ export function parseStreamMessageUpdates(data: string): StreamMessageUpdate[] {
   }
 
   return updates
+}
+
+export function parseStreamUsage(
+  data: string
+): ChatCompletionUsage | undefined {
+  try {
+    const chunk = JSON.parse(data) as ChatCompletionChunk
+    return chunk.usage ?? undefined
+  } catch {
+    return undefined
+  }
 }
 
 export function isStreamDoneMessage(data: string): boolean {
