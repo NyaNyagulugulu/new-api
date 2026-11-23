@@ -1,3 +1,7 @@
+import {
+  parseTiersFromExpr,
+  type ParsedTier,
+} from '@/features/pricing/lib/billing-expr'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -100,6 +104,97 @@ function resolveGroupRatio(
     : 1
 }
 
+function tierPrice(tier: ParsedTier, field: string): number | undefined {
+  const value = tier[field]
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined
+}
+
+function tierMatches(tier: ParsedTier, usage: MessageUsage): boolean {
+  return tier.conditions.every((condition) => {
+    let value = usage.inputTokens
+    if (condition.var === 'c') {
+      value = usage.outputTokens
+    }
+
+    switch (condition.op) {
+      case '<':
+        return value < condition.value
+      case '<=':
+        return value <= condition.value
+      case '>':
+        return value > condition.value
+      case '>=':
+        return value >= condition.value
+    }
+  })
+}
+
+function estimateTieredExpressionCostUSD(
+  usage: MessageUsage,
+  model: PricingModel,
+  groupRatio: number
+): number | null {
+  const tiers = parseTiersFromExpr(model.billing_expr ?? '')
+  const tier = tiers.find((candidate) => tierMatches(candidate, usage))
+  if (!tier) return null
+
+  if (tier.billingUnit === 'request') {
+    const fixedPrice = tier.fixedPrice
+    if (typeof fixedPrice !== 'number' || !Number.isFinite(fixedPrice)) {
+      return null
+    }
+    return Math.max(0, fixedPrice * groupRatio)
+  }
+
+  const inputPrice = tierPrice(tier, 'inputPrice') ?? 0
+  const outputPrice = tierPrice(tier, 'outputPrice') ?? 0
+  const cacheReadPrice = tierPrice(tier, 'cacheReadPrice')
+  const cacheCreatePrice = tierPrice(tier, 'cacheCreatePrice')
+  const imagePrice = tierPrice(tier, 'imagePrice')
+  const audioInputPrice = tierPrice(tier, 'audioInputPrice')
+  const audioOutputPrice = tierPrice(tier, 'audioOutputPrice')
+  const imageOutputPrice = tierPrice(tier, 'imageOutputPrice')
+
+  let remainingInput = usage.inputTokens
+  let cost = 0
+  const addInput = (tokens: number, price: number | undefined) => {
+    if (tokens <= 0) return
+    const resolvedPrice = price ?? inputPrice
+    cost += tokens * resolvedPrice
+    remainingInput = Math.max(0, remainingInput - tokens)
+  }
+
+  addInput(usage.cachedTokens, cacheReadPrice)
+  addInput(usage.cacheCreationTokens, cacheCreatePrice)
+  addInput(usage.imageTokens, imagePrice)
+  addInput(usage.audioTokens, audioInputPrice)
+  cost += remainingInput * inputPrice
+
+  let remainingOutput = usage.outputTokens
+  if (
+    imageOutputPrice !== undefined &&
+    usage.imageTokens > 0 &&
+    imagePrice === undefined
+  ) {
+    cost += usage.imageTokens * imageOutputPrice
+    remainingOutput = Math.max(0, remainingOutput - usage.imageTokens)
+  }
+  if (
+    audioOutputPrice !== undefined &&
+    usage.audioTokens > 0 &&
+    audioInputPrice === undefined
+  ) {
+    cost += usage.audioTokens * audioOutputPrice
+    remainingOutput = Math.max(0, remainingOutput - usage.audioTokens)
+  }
+  cost += remainingOutput * outputPrice
+
+  const requestCost = (cost / 1_000_000) * groupRatio
+  return Number.isFinite(requestCost) ? requestCost : null
+}
+
 /**
  * Estimate the request cost in USD from the same ratio fields used by the
  * token billing calculator. Actual settlement remains authoritative.
@@ -110,9 +205,16 @@ export function estimateMessageUsageCostUSD(
   groupRatios: Record<string, number>
 ): number | null {
   if (!model) return usage.reportedCostUSD ?? null
-  if (model.billing_mode === 'tiered_expr') return usage.reportedCostUSD ?? null
 
   const groupRatio = resolveGroupRatio(model, usage.group, groupRatios)
+
+  if (model.billing_mode === 'tiered_expr' && model.billing_expr) {
+    return (
+      estimateTieredExpressionCostUSD(usage, model, groupRatio) ??
+      usage.reportedCostUSD ??
+      null
+    )
+  }
 
   if (model.quota_type === 1) {
     return Math.max(0, (model.model_price ?? 0) * groupRatio)

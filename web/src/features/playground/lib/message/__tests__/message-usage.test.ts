@@ -71,6 +71,31 @@ test('stream usage details are normalized for display and billing estimates', ()
   expect(estimateMessageUsageCostUSD(usage, model, { premium: 1.5 })).toBe(5.7)
 })
 
+test('tiered token expressions are estimated from their unit prices', () => {
+  const usage = normalizeMessageUsage(
+    {
+      prompt_tokens: 1_000_000,
+      completion_tokens: 500_000,
+      total_tokens: 1_500_000,
+    },
+    'tiered-model',
+    'default'
+  )
+
+  expect(
+    estimateMessageUsageCostUSD(
+      usage,
+      {
+        ...model,
+        model_name: 'tiered-model',
+        billing_mode: 'tiered_expr',
+        billing_expr: 'tier("base", p * 0.03 + c * 0.06)',
+      },
+      { default: 1 }
+    )
+  ).toBeCloseTo(0.06)
+})
+
 test('stream parser keeps the terminal usage chunk', () => {
   expect(
     parseStreamUsage(

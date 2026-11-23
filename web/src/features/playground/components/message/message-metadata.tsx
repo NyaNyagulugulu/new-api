@@ -142,8 +142,8 @@ export function MessageMetadata(props: MessageMetadataProps) {
               ? t('Cost unavailable')
               : formatBillingCurrencyFromUSD(estimatedCostUSD, {
                   abbreviate: false,
-                  digitsLarge: 6,
-                  digitsSmall: 8,
+                  digitsLarge: 3,
+                  digitsSmall: 3,
                   locale,
                   minimumNonZero: 0.00000001,
                 }),

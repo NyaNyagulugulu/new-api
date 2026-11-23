@@ -332,6 +332,7 @@ export function useChatHandler({
             const updatedMessage = applyChatCompletionResponse(
               message,
               response,
+              config.model,
               config.group
             )
 

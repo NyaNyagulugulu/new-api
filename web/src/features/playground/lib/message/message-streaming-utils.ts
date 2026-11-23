@@ -214,6 +214,7 @@ export function applyChatCompletionChoice(
 export function applyChatCompletionResponse(
   message: Message,
   response: ChatCompletionResponse,
+  model?: string,
   group?: string
 ): Message | null {
   const choice = response.choices?.[0]
@@ -226,7 +227,7 @@ export function applyChatCompletionResponse(
     message,
     choice,
     response.usage,
-    response.model,
+    model ?? response.model,
     group
   )
 }
