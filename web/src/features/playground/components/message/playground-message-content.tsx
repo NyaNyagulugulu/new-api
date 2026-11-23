@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Globe2Icon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -39,6 +40,7 @@ import {
   SourcesContent,
   SourcesTrigger,
 } from '@/components/ai-elements/sources'
+import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
 import { MESSAGE_STATUS } from '../../constants'
@@ -50,12 +52,33 @@ import {
   type MessageAlignment,
 } from '../../lib'
 import { getMessageContentStyles } from '../../lib/message/message-styles'
-import type { Message } from '../../types'
+import type { Message, WebSearchStatus } from '../../types'
 import { MessageAttachments } from './message-attachments'
 import { MessageError } from './message-error'
 import { MessageMetadata } from './message-metadata'
 
 const DEEPSEEK_MODEL_PATTERN = /deepseek/i
+
+function getWebSearchLabelKey(status: Exclude<WebSearchStatus, 'searching'>) {
+  switch (status) {
+    case 'used':
+      return 'Searched the web'
+    case 'empty':
+      return 'Web search returned no results'
+    case 'failed':
+      return 'Web search failed'
+    case 'skipped':
+      return 'Web search skipped'
+  }
+}
+
+function getWebSearchBadgeVariant(
+  status: Exclude<WebSearchStatus, 'searching'>
+) {
+  if (status === 'failed') return 'warning' as const
+  if (status === 'empty') return 'outline' as const
+  return 'secondary' as const
+}
 
 type PlaygroundMessageContentProps = {
   actions: ReactNode
@@ -90,8 +113,11 @@ export function PlaygroundMessageContent({
   const isMessageFinal =
     message.status !== MESSAGE_STATUS.LOADING &&
     message.status !== MESSAGE_STATUS.STREAMING
+  const webSearchStatus = message.webSearch?.status
   const showDeepSeekThinking =
-    !isMessageFinal && DEEPSEEK_MODEL_PATTERN.test(message.model ?? '')
+    !isMessageFinal &&
+    webSearchStatus !== 'searching' &&
+    DEEPSEEK_MODEL_PATTERN.test(message.model ?? '')
 
   return (
     <div
@@ -113,6 +139,27 @@ export function PlaygroundMessageContent({
             ))}
           </SourcesContent>
         </Sources>
+      )}
+
+      {webSearchStatus === 'searching' && (
+        <div
+          aria-live='polite'
+          className='text-muted-foreground mb-3 flex items-center gap-2 text-xs'
+          role='status'
+        >
+          <Loader size={14} />
+          <Shimmer duration={1}>{t('Searching the web...')}</Shimmer>
+        </div>
+      )}
+
+      {webSearchStatus && webSearchStatus !== 'searching' && (
+        <Badge
+          className='mb-3'
+          variant={getWebSearchBadgeVariant(webSearchStatus)}
+        >
+          <Globe2Icon aria-hidden='true' />
+          {t(getWebSearchLabelKey(webSearchStatus))}
+        </Badge>
       )}
 
       {showDeepSeekThinking && (
@@ -143,20 +190,22 @@ export function PlaygroundMessageContent({
         </Reasoning>
       )}
 
-      {showLoader && !showDeepSeekThinking && (
-        <div
-          aria-live='polite'
-          className='flex min-h-16 items-center py-2'
-          role='status'
-        >
-          <div className='flex items-center gap-2'>
-            <Loader />
-            <Shimmer className='text-sm' duration={1}>
-              {t('Responding...')}
-            </Shimmer>
+      {showLoader &&
+        !showDeepSeekThinking &&
+        webSearchStatus !== 'searching' && (
+          <div
+            aria-live='polite'
+            className='flex min-h-16 items-center py-2'
+            role='status'
+          >
+            <div className='flex items-center gap-2'>
+              <Loader />
+              <Shimmer className='text-sm' duration={1}>
+                {t('Responding...')}
+              </Shimmer>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {isError && (
         <>

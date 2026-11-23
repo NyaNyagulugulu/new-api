@@ -35,12 +35,26 @@ class FakeStreamSource {
   streamed = false
   private listeners = new Map<
     string,
-    Array<(event: Event & { data?: string; readyState?: number }) => void>
+    Array<
+      (
+        event: Event & {
+          data?: string
+          headers?: Record<string, string[]>
+          readyState?: number
+        }
+      ) => void
+    >
   >()
 
   addEventListener(
     type: string,
-    listener: (event: Event & { data?: string; readyState?: number }) => void
+    listener: (
+      event: Event & {
+        data?: string
+        headers?: Record<string, string[]>
+        readyState?: number
+      }
+    ) => void
   ) {
     const listeners = this.listeners.get(type) ?? []
     listeners.push(listener)
@@ -55,10 +69,11 @@ class FakeStreamSource {
     this.streamed = true
   }
 
-  emit(type: string, data?: string) {
+  emit(type: string, data?: string, headers?: Record<string, string[]>) {
     for (const listener of this.listeners.get(type) ?? []) {
-      listener({ data, readyState: this.readyState } as Event & {
+      listener({ data, headers, readyState: this.readyState } as Event & {
         data?: string
+        headers?: Record<string, string[]>
         readyState?: number
       })
     }
@@ -78,6 +93,40 @@ const noopCallbacks = {
 }
 
 describe('latest-wins stream request coordination', () => {
+  test('reports web search status and sources from response headers', async () => {
+    const sources: FakeStreamSource[] = []
+    let receivedStatus = ''
+    let receivedSources: Array<{ href: string; title: string }> = []
+    const documentSources = [
+      { href: 'https://example.com/docs', title: 'Official docs' },
+    ]
+    const encodedSources = btoa(JSON.stringify(documentSources))
+    const controller = createStreamRequestController({
+      getHeaders: () => Promise.resolve({ Authorization: 'Bearer current' }),
+      createSource: () => {
+        const source = new FakeStreamSource()
+        sources.push(source)
+        return source
+      },
+      setStreaming: () => undefined,
+    })
+
+    await controller.send(payload, {
+      ...noopCallbacks,
+      onWebSearch: (status, nextSources) => {
+        receivedStatus = status
+        receivedSources = nextSources
+      },
+    })
+    sources[0]?.emit('open', undefined, {
+      'x-webchat-web-search': ['used'],
+      'x-webchat-web-search-sources': [encodedSources],
+    })
+
+    expect(receivedStatus).toBe('used')
+    expect(receivedSources).toEqual(documentSources)
+  })
+
   test('only creates a stream for the latest header request', async () => {
     const firstHeaders = deferred<Record<string, string>>()
     const secondHeaders = deferred<Record<string, string>>()

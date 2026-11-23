@@ -65,3 +65,43 @@ test('keeps the standard loader for other models', () => {
   expect(screen.getByRole('status')).toBeInTheDocument()
   expect(screen.queryByTestId('deepseek-thinking')).not.toBeInTheDocument()
 })
+
+test('shows web search progress instead of the model thinking animation', () => {
+  const message = {
+    ...createLoadingAssistantMessage(0),
+    model: 'deepseek-chat',
+    webSearch: { status: 'searching' as const },
+  }
+
+  render(
+    <PlaygroundMessageContent
+      actions={null}
+      alignment='left'
+      message={message}
+      versionContent=''
+    />
+  )
+
+  expect(screen.getByText('Searching the web...')).toBeInTheDocument()
+  expect(screen.queryByTestId('deepseek-thinking')).not.toBeInTheDocument()
+})
+
+test('shows a persistent web search completion badge', () => {
+  const message = {
+    ...createLoadingAssistantMessage(0),
+    model: 'gpt-4o',
+    status: 'complete' as const,
+    webSearch: { status: 'used' as const },
+  }
+
+  render(
+    <PlaygroundMessageContent
+      actions={null}
+      alignment='left'
+      message={message}
+      versionContent=''
+    />
+  )
+
+  expect(screen.getByText('Searched the web')).toBeInTheDocument()
+})

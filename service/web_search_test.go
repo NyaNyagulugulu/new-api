@@ -39,9 +39,13 @@ func TestSearchWebForChatTruncatesQueryAndReturnsContext(t *testing.T) {
 	c.Request.Header.Set("Cookie", "session=test-cookie")
 
 	query := strings.Repeat("深", 200)
-	contextBlock, err := SearchWebForChat(c, "default", query)
+	result, err := SearchWebForChat(c, "default", query)
 	require.NoError(t, err)
 	assert.LessOrEqual(t, utf8.RuneCountInString(receivedQuery), 128)
-	assert.Contains(t, contextBlock, "https://go.dev/")
-	assert.Contains(t, contextBlock, "Latest release")
+	assert.Contains(t, result.Content, "https://go.dev/")
+	assert.Contains(t, result.Content, "Latest release")
+	assert.Equal(t, []WebSearchSource{{
+		Href:  "https://go.dev/",
+		Title: "Go",
+	}}, result.Sources)
 }

@@ -173,17 +173,22 @@ test('web search is delegated to the backend and keeps the reasoning stream', as
   await waitFor(() => expect(streamMocks.sendStreamRequest).toHaveBeenCalled())
   const streamCall = streamMocks.sendStreamRequest.mock.calls.at(-1)
   if (!streamCall) throw new Error('stream call not found')
-  const [, payload, onUpdate, onComplete] = streamCall as [
+  const [, payload, onUpdate, onComplete, , onWebSearch] = streamCall as [
     string,
     ChatCompletionRequest,
     (type: 'reasoning' | 'content', chunk: string) => void,
     (usage?: ChatCompletionUsage) => void,
     (error: string, errorCode?: string) => void,
+    (status: 'used', sources: Array<{ href: string; title: string }>) => void,
   ]
 
   expect(payload.web_search).toBe(true)
+  expect(result.current.messages.at(-1)?.webSearch?.status).toBe('searching')
 
   act(() => {
+    onWebSearch('used', [
+      { href: 'https://go.dev/doc/devel/release', title: 'Go releases' },
+    ])
     onUpdate('reasoning', 'Checking the official download page.')
     onUpdate('content', 'Go 1.25 is available.')
     onComplete()
@@ -194,6 +199,10 @@ test('web search is delegated to the backend and keeps the reasoning stream', as
     'Checking the official download page.'
   )
   expect(assistantMessage?.versions[0]?.content).toBe('Go 1.25 is available.')
+  expect(assistantMessage?.webSearch?.status).toBe('used')
+  expect(assistantMessage?.sources).toEqual([
+    { href: 'https://go.dev/doc/devel/release', title: 'Go releases' },
+  ])
 })
 
 test('automatically summarizes older context before starting the answer', async () => {

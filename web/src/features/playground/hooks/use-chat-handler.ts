@@ -53,6 +53,8 @@ import type {
   PlaygroundConfig,
   ParameterEnabled,
   UserMemory,
+  WebSearchSource,
+  WebSearchStatus,
 } from '../types'
 import { useStreamRequest } from './use-stream-request'
 
@@ -271,6 +273,27 @@ export function useChatHandler({
     [scheduleStreamFlush]
   )
 
+  const handleWebSearchStatus = useCallback(
+    (
+      generation: number,
+      status: WebSearchStatus,
+      sources: WebSearchSource[]
+    ) => {
+      const request = generationsRef.current.get(generation)
+      if (!request) return
+      onMessageUpdate(
+        (prev) =>
+          updateLastAssistantMessage(prev, (message) => ({
+            ...message,
+            webSearch: { status },
+            ...(sources.length > 0 ? { sources } : {}),
+          })),
+        request.sessionId
+      )
+    },
+    [onMessageUpdate]
+  )
+
   const handleStreamComplete = useCallback(
     (generation: number, usage?: ChatCompletionUsage) => {
       const request = generationsRef.current.get(generation)
@@ -290,6 +313,9 @@ export function useChatHandler({
             const completedMessage = {
               ...streamedMessage,
               model: config.model,
+              ...(streamedMessage.webSearch?.status === 'searching'
+                ? { webSearch: { status: 'used' as const } }
+                : {}),
               ...(mergedUsage
                 ? {
                     usage: {
@@ -332,15 +358,21 @@ export function useChatHandler({
       const errorTitle = t(ERROR_MESSAGES.API_REQUEST_ERROR)
       onMessageUpdate(
         (prev) =>
-          updateAssistantMessageWithError(
-            streamUpdate
-              ? updateLastAssistantMessage(prev, (message) =>
-                  applyPendingStreamChunks(message, streamUpdate.pending)
-                )
-              : prev,
-            displayError,
-            errorCode,
-            errorTitle
+          updateLastAssistantMessage(
+            updateAssistantMessageWithError(
+              streamUpdate
+                ? updateLastAssistantMessage(prev, (message) =>
+                    applyPendingStreamChunks(message, streamUpdate.pending)
+                  )
+                : prev,
+              displayError,
+              errorCode,
+              errorTitle
+            ),
+            (message) =>
+              message.webSearch?.status === 'searching'
+                ? { ...message, webSearch: { status: 'failed' } }
+                : message
           ),
         request.sessionId
       )
@@ -374,10 +406,14 @@ export function useChatHandler({
                   applyPendingStreamChunks(message, streamUpdate.pending)
                 )
               : prev,
-            (message) =>
-              isAssistantMessagePending(message)
+            (message) => {
+              const completed = isAssistantMessagePending(message)
                 ? completeAssistantMessage(message)
                 : message
+              return completed.webSearch?.status === 'searching'
+                ? { ...completed, webSearch: { status: 'failed' } }
+                : completed
+            }
           ),
         request.sessionId
       )
@@ -429,7 +465,8 @@ export function useChatHandler({
         payload,
         (type, chunk) => handleStreamUpdate(generation, type, chunk),
         (usage) => handleStreamComplete(generation, usage),
-        (error, errorCode) => handleStreamError(generation, error, errorCode)
+        (error, errorCode) => handleStreamError(generation, error, errorCode),
+        (status, sources) => handleWebSearchStatus(generation, status, sources)
       )
     },
     [
@@ -437,6 +474,7 @@ export function useChatHandler({
       handleStreamComplete,
       handleStreamError,
       handleStreamUpdate,
+      handleWebSearchStatus,
       parameterEnabled,
       memorySettings?.max_injected_chars,
       sendStreamRequest,
@@ -464,7 +502,9 @@ export function useChatHandler({
       try {
         const response = await sendChatCompletion(
           payload,
-          abortController.signal
+          abortController.signal,
+          (status, sources) =>
+            handleWebSearchStatus(generation, status, sources)
         )
         if (
           abortController.signal.aborted ||
@@ -514,6 +554,7 @@ export function useChatHandler({
     [
       config,
       handleStreamError,
+      handleWebSearchStatus,
       onMessageUpdate,
       parameterEnabled,
       memorySettings?.max_injected_chars,
@@ -667,12 +708,15 @@ export function useChatHandler({
           updateLastAssistantMessage(prev, (message) => ({
             ...message,
             model: config.model,
+            ...(config.webSearch
+              ? { webSearch: { status: 'searching' as const } }
+              : {}),
           })),
         sessionId
       )
       void sendManagedChat(messages, sessionId)
     },
-    [config.model, onMessageUpdate, sendManagedChat]
+    [config.model, config.webSearch, onMessageUpdate, sendManagedChat]
   )
 
   const stopGeneration = useCallback(

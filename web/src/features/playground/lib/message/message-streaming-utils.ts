@@ -260,11 +260,16 @@ export function sanitizeMessagesOnLoad(messages: Message[]): Message[] {
   const finalized = finalizeMessage(messages[targetIndex])
   const hasContent = hasMessageContent(finalized)
   const hasReasoning = finalized.reasoning?.content?.trim()
+  const webSearch =
+    finalized.webSearch?.status === 'searching'
+      ? { status: 'failed' as const }
+      : finalized.webSearch
 
   const sanitized: Message =
     hasContent || hasReasoning
       ? completeAssistantTiming({
           ...finalized,
+          webSearch,
           status: MESSAGE_STATUS.COMPLETE,
           isReasoningStreaming: false,
         })
@@ -275,6 +280,7 @@ export function sanitizeMessagesOnLoad(messages: Message[]): Message[] {
               ERROR_MESSAGES.INTERRUPTED
             )}`
           ),
+          webSearch,
           status: MESSAGE_STATUS.ERROR,
           isReasoningStreaming: false,
         })

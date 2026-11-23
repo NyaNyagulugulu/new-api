@@ -21,6 +21,18 @@ export type MessageRole = 'user' | 'assistant' | 'system'
 
 export type MessageStatus = 'loading' | 'streaming' | 'complete' | 'error'
 
+export type WebSearchStatus =
+  | 'searching'
+  | 'used'
+  | 'empty'
+  | 'failed'
+  | 'skipped'
+
+export interface WebSearchSource {
+  href: string
+  title: string
+}
+
 export type PlaygroundMessageLayoutMode = 'alternating' | 'left'
 
 export type ReasoningEffort =
@@ -73,7 +85,10 @@ export interface Message {
   startedAt?: number
   completedAt?: number
   durationMs?: number
-  sources?: { href: string; title: string }[]
+  sources?: WebSearchSource[]
+  webSearch?: {
+    status: WebSearchStatus
+  }
   reasoning?: {
     content: string
     duration: number

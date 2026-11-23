@@ -26,17 +26,32 @@ import {
   getStreamReadyStateError,
   isStreamClosedReadyState,
   isStreamDoneMessage,
+  parseWebSearchSources,
+  parseWebSearchStatus,
   parseStreamErrorDetails,
   parseStreamMessageUpdates,
   parseStreamUsage,
+  WEB_SEARCH_SOURCES_HEADER,
+  WEB_SEARCH_STATUS_HEADER,
 } from '../lib'
-import type { ChatCompletionRequest, ChatCompletionUsage } from '../types'
+import type {
+  ChatCompletionRequest,
+  ChatCompletionUsage,
+  WebSearchSource,
+  WebSearchStatus,
+} from '../types'
+
+type StreamEvent = Event & {
+  data?: string
+  headers?: Record<string, string[]>
+  readyState?: number
+}
 
 interface StreamEventSource {
   readyState?: number
   addEventListener: (
     type: string,
-    listener: (event: Event & { data?: string; readyState?: number }) => void
+    listener: (event: StreamEvent) => void
   ) => void
   close: () => void
   stream: () => void
@@ -46,6 +61,7 @@ interface StreamRequestCallbacks {
   onUpdate: (type: 'reasoning' | 'content', chunk: string) => void
   onComplete: (usage?: ChatCompletionUsage) => void
   onError: (error: string, errorCode?: string) => void
+  onWebSearch?: (status: WebSearchStatus, sources: WebSearchSource[]) => void
 }
 
 interface StreamRequestControllerRuntime {
@@ -144,6 +160,18 @@ export function createStreamRequestController(
       }
     })
 
+    nextSource.addEventListener('open', (event) => {
+      if (!isCurrent() || completed) return
+      const status = parseWebSearchStatus(
+        event.headers?.[WEB_SEARCH_STATUS_HEADER]?.[0]
+      )
+      if (!status || status === 'searching') return
+      callbacks.onWebSearch?.(
+        status,
+        parseWebSearchSources(event.headers?.[WEB_SEARCH_SOURCES_HEADER]?.[0])
+      )
+    })
+
     nextSource.addEventListener('error', (event) => {
       if (!isCurrent() || completed) return
       if (isStreamClosedReadyState(nextSource.readyState)) {
@@ -224,7 +252,11 @@ export function useStreamRequest() {
       payload: ChatCompletionRequest,
       onUpdate: (type: 'reasoning' | 'content', chunk: string) => void,
       onComplete: (usage?: ChatCompletionUsage) => void,
-      onError: (error: string, errorCode?: string) => void
+      onError: (error: string, errorCode?: string) => void,
+      onWebSearch?: (
+        status: WebSearchStatus,
+        sources: WebSearchSource[]
+      ) => void
     ) => {
       controllersRef.current.get(requestId)?.stop()
 
@@ -260,6 +292,9 @@ export function useStreamRequest() {
         onError: (error, errorCode) => {
           finish()
           onError(error, errorCode)
+        },
+        onWebSearch: (status, sources) => {
+          onWebSearch?.(status, sources)
         },
       })
     },

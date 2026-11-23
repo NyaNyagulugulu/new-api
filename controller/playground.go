@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -19,9 +20,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	playgroundWebSearchHeader        = "X-WebChat-Web-Search"
+	playgroundWebSearchSourcesHeader = "X-WebChat-Web-Search-Sources"
+)
+
 func Playground(c *gin.Context) {
-	if err := enrichPlaygroundWebSearch(c); err != nil {
+	status, sources, err := enrichPlaygroundWebSearch(c)
+	if err != nil {
 		common.SysError(common.LogText("web search enrichment failed: %s", err.Error()))
+	}
+	c.Header(playgroundWebSearchHeader, status)
+	if encodedSources := encodePlaygroundWebSearchSources(sources); encodedSources != "" {
+		c.Header(playgroundWebSearchSourcesHeader, encodedSources)
 	}
 	playgroundRelay(c, types.RelayFormatOpenAI)
 }
@@ -94,39 +105,63 @@ func PlaygroundToolsSearch(c *gin.Context) {
 	Relay(c, types.RelayFormatDeepSeekTools)
 }
 
-func enrichPlaygroundWebSearch(c *gin.Context) error {
+func enrichPlaygroundWebSearch(
+	c *gin.Context,
+) (string, []service.WebSearchSource, error) {
 	storage, err := common.GetBodyStorage(c)
 	if err != nil {
-		return err
+		return "failed", nil, err
 	}
 	rawBody, err := storage.Bytes()
 	if err != nil {
-		return err
+		return "failed", nil, err
 	}
 
 	var request map[string]any
 	if err := common.Unmarshal(rawBody, &request); err != nil {
-		return err
+		return "failed", nil, err
 	}
 	enabled, _ := request["web_search"].(bool)
 	if !enabled {
-		return nil
+		return "off", nil, nil
 	}
 	delete(request, "web_search")
 
 	query := playgroundSearchQuery(request)
-	contextBlock := ""
+	status := "skipped"
+	var searchContext service.WebSearchContext
 	if query != "" {
 		group, _ := request["group"].(string)
-		contextBlock, err = service.SearchWebForChat(c, group, query)
+		searchContext, err = service.SearchWebForChat(c, group, query)
 		if err != nil {
 			common.SysError(common.LogText("web search failed: %s", err.Error()))
+			status = "failed"
+		} else if searchContext.Content == "" {
+			status = "empty"
+		} else {
+			status = "used"
+			injectPlaygroundSearchContext(request, searchContext.Content)
 		}
 	}
-	if contextBlock != "" {
-		injectPlaygroundSearchContext(request, contextBlock)
+	if err := replacePlaygroundRequestBody(c, storage, request); err != nil {
+		return "failed", nil, err
 	}
-	return replacePlaygroundRequestBody(c, storage, request)
+	return status, searchContext.Sources, nil
+}
+
+func encodePlaygroundWebSearchSources(sources []service.WebSearchSource) string {
+	if len(sources) == 0 {
+		return ""
+	}
+	encoded, err := common.Marshal(sources)
+	if err != nil {
+		return ""
+	}
+	headerValue := base64.RawURLEncoding.EncodeToString(encoded)
+	if len(headerValue) > 7000 {
+		return ""
+	}
+	return headerValue
 }
 
 func playgroundSearchQuery(request map[string]any) string {
@@ -200,6 +235,9 @@ func playgroundSearchTopic(question string) string {
 		"联网查",
 		"搜索",
 		"查询",
+		"查一下",
+		"查一查",
+		"搜一下",
 		"search for",
 		"look up",
 	} {

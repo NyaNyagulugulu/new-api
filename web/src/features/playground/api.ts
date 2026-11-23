@@ -20,6 +20,12 @@ import { api } from '@/lib/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { API_ENDPOINTS } from './constants'
+import {
+  parseWebSearchSources,
+  parseWebSearchStatus,
+  WEB_SEARCH_SOURCES_HEADER,
+  WEB_SEARCH_STATUS_HEADER,
+} from './lib/chat/web-search-metadata'
 import { sanitizeMessagesOnLoad } from './lib/message/message-streaming-utils'
 import { chatSessionsSchema } from './lib/storage/storage-schema'
 import type {
@@ -31,19 +37,54 @@ import type {
   MemorySettings,
   UserMemory,
   UserMemoryInput,
+  WebSearchSource,
+  WebSearchStatus,
 } from './types'
+
+function readResponseHeader(
+  headers: unknown,
+  name: string
+): string | undefined {
+  if (!headers || typeof headers !== 'object') return undefined
+  const headerContainer = headers as {
+    get?: (key: string) => unknown
+    [key: string]: unknown
+  }
+  const value =
+    typeof headerContainer.get === 'function'
+      ? headerContainer.get(name)
+      : headerContainer[name]
+  if (Array.isArray(value)) {
+    return typeof value[0] === 'string' ? value[0] : undefined
+  }
+  return typeof value === 'string' ? value : undefined
+}
 
 /**
  * Send chat completion request (non-streaming)
  */
 export async function sendChatCompletion(
   payload: ChatCompletionRequest,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onWebSearch?: (status: WebSearchStatus, sources: WebSearchSource[]) => void
 ): Promise<ChatCompletionResponse> {
   const res = await api.post(API_ENDPOINTS.CHAT_COMPLETIONS, payload, {
     signal,
     skipErrorHandler: true,
   } as Record<string, unknown>)
+  if (onWebSearch) {
+    const status = parseWebSearchStatus(
+      readResponseHeader(res.headers, WEB_SEARCH_STATUS_HEADER)
+    )
+    if (status) {
+      onWebSearch(
+        status,
+        parseWebSearchSources(
+          readResponseHeader(res.headers, WEB_SEARCH_SOURCES_HEADER)
+        )
+      )
+    }
+  }
   return res.data
 }
 

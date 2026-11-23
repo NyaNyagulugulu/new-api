@@ -78,6 +78,10 @@ const sourceSchema = z.object({
   title: z.string(),
 })
 
+const webSearchSchema = z.object({
+  status: z.enum(['searching', 'used', 'empty', 'failed', 'skipped']),
+})
+
 const reasoningSchema = z.object({
   content: z.string(),
   duration: z.number(),
@@ -115,6 +119,7 @@ const messageSchema = z.object({
   completedAt: z.number().optional(),
   durationMs: z.number().optional(),
   sources: z.array(sourceSchema).optional(),
+  webSearch: webSearchSchema.optional(),
   reasoning: reasoningSchema.optional(),
   isReasoningStreaming: z.boolean().optional(),
   isReasoningComplete: z.boolean().optional(),
