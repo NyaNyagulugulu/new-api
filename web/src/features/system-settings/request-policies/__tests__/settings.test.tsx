@@ -281,6 +281,38 @@ describe('request policy settings', () => {
     expect(api.put).not.toHaveBeenCalled()
   })
 
+  it('saves an added retry status code even when its range is already covered', async () => {
+    settings.AutomaticRetryStatusCodes = '409-499,500-503'
+    vi.mocked(api.patch).mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          options: Object.fromEntries(
+            Object.entries(settings).map(([key, value]) => [key, String(value)])
+          ),
+        },
+      },
+    })
+    await renderPolicies('/system-settings/request-policies/retry')
+    const codes = await screen.findByRole('textbox', {
+      name: 'Auto-retry status codes',
+    })
+    fireEvent.change(codes, {
+      target: { value: '429,409-499,500-503' },
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledExactlyOnceWith(
+        '/api/option/request_policy',
+        {
+          options: {
+            AutomaticRetryStatusCodes: '429,409-499,500-503',
+          },
+        }
+      )
+    )
+  })
+
   it('a rejected save keeps the edited retry value and allows another save', async () => {
     vi.mocked(api.patch).mockResolvedValue({
       data: { success: false, message: 'Save rejected' },

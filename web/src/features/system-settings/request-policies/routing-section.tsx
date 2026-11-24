@@ -21,7 +21,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { handleServerError } from '@/lib/handle-server-error'
-import { parseHttpStatusCodeRules } from '@/lib/http-status-code-rules'
 
 import { SettingsAccordion } from '../components/settings-accordion'
 import { SettingsCard } from '../components/settings-card'
@@ -86,9 +85,6 @@ function RoutingPolicyEditor(props: { config: PolicyConfig }) {
 
   const save = async (submitted: RoutingPolicyFormValues) => {
     const next = routingPolicyOptions(submitted)
-    next.AutomaticRetryStatusCodes = parseHttpStatusCodeRules(
-      next.AutomaticRetryStatusCodes
-    ).normalized
     const delta = Object.fromEntries(
       Object.entries(next).filter(([key, value]) => {
         const previous = props.config.options[key]
@@ -99,7 +95,7 @@ function RoutingPolicyEditor(props: { config: PolicyConfig }) {
           )
         }
         if (key === 'AutomaticRetryStatusCodes') {
-          return value !== parseHttpStatusCodeRules(previous).normalized
+          return value.trim() !== (previous ?? '').trim()
         }
         return value !== previous
       })
