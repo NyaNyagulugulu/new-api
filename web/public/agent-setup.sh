@@ -16,7 +16,6 @@ trap 'rm -f "$SETUP_SCRIPT"; exit 130' 1 2 15
 trap 'rm -f "$SETUP_SCRIPT"' 0
 
 cat >"$SETUP_SCRIPT" <<'PY'
-import getpass
 import json
 import os
 import platform
@@ -28,8 +27,8 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
-DEFAULT_CODEX_MODEL = 'gpt-5.6-sol'
-DEFAULT_DSH_MODEL = 'gpt-5.6-sol'
+DEFAULT_CODEX_MODEL = 'claude-fable-5-1'
+DEFAULT_DSH_MODEL = 'claude-fable-5-1'
 DEFAULT_GEMINI_MODEL = 'gemini-2.5-pro'
 GATEWAY_URL = 'https://ai.nekocore.cn'
 CODEX_MODEL_CATALOG_URL = 'https://ai.nekocore.cn/codex/models'
@@ -97,6 +96,46 @@ def write_text(path, content):
             os.unlink(temporary)
 
 
+def ensure_interactive_input():
+    try:
+        if sys.stdin is not None and sys.stdin.isatty():
+            return
+    except (OSError, ValueError):
+        pass
+    try:
+        sys.stdin = open('/dev/tty', 'r', encoding='utf-8')
+    except OSError as error:
+        raise ValueError(
+            '无法读取终端输入：请直接在终端中运行该命令，或先下载脚本再执行。'
+        ) from error
+
+
+def read_secret(prompt):
+    if not sys.stdin.isatty():
+        value = sys.stdin.readline()
+        if not value:
+            raise ValueError('未读取到 API Key。')
+        return value.rstrip('\n')
+    import termios
+
+    descriptor = sys.stdin.fileno()
+    original = termios.tcgetattr(descriptor)
+    try:
+        hidden = original[:]
+        hidden[3] = hidden[3] & ~termios.ECHO
+        termios.tcsetattr(descriptor, termios.TCSADRAIN, hidden)
+        sys.stdout.write(prompt)
+        sys.stdout.flush()
+        value = sys.stdin.readline()
+    finally:
+        termios.tcsetattr(descriptor, termios.TCSADRAIN, original)
+        sys.stdout.write('\n')
+        sys.stdout.flush()
+    if not value:
+        raise ValueError('未读取到 API Key。')
+    return value.rstrip('\n')
+
+
 def read_json_object(path):
     if not path.exists():
         return {}
@@ -127,6 +166,38 @@ def write_codex_token_helper(codex_home, api_key):
     )
     os.chmod(helper_path, 0o700)
     return helper_path
+
+
+def ensure_codex_feature(lines, key, value_line):
+    key_pattern = re.compile(r'^\s*' + re.escape(key) + r'\s*=')
+    for index, line in enumerate(lines):
+        if not re.match(r'^\s*\[\s*features\s*\]\s*(?:#.*)?$', line):
+            continue
+        end = len(lines)
+        for next_index in range(index + 1, len(lines)):
+            if re.match(r'^\s*\[', lines[next_index]):
+                end = next_index
+                break
+        body = []
+        seen = False
+        for body_index in range(index + 1, end):
+            if key_pattern.match(lines[body_index]):
+                if seen:
+                    continue
+                seen = True
+                body.append(value_line)
+            else:
+                body.append(lines[body_index])
+        if not seen:
+            insert_at = len(body)
+            while insert_at > 0 and not body[insert_at - 1].strip():
+                insert_at -= 1
+            body.insert(insert_at, value_line)
+        return lines[:index + 1] + body + lines[end:]
+    trimmed = list(lines)
+    while trimmed and not trimmed[-1].strip():
+        trimmed.pop()
+    return trimmed + ['', '[features]', value_line]
 
 
 def update_codex_config(path, base_url, api_key, stamp):
@@ -177,6 +248,9 @@ def update_codex_config(path, base_url, api_key, stamp):
         prefix.append(f'model = {toml_string(DEFAULT_CODEX_MODEL)}')
 
     output = prefix + output + without_provider[top_level_end:]
+    output = ensure_codex_feature(
+        output, 'api_key_model_discovery', 'api_key_model_discovery = true'
+    )
     while output and not output[-1].strip():
         output.pop()
     output.extend(
@@ -588,6 +662,7 @@ def update_dsh_config(dsh_home, base_url, api_key, stamp):
 
 def main():
     os.umask(0o077)
+    ensure_interactive_input()
     home = Path.home()
     print(f'\n{PROVIDER_NAME} - {platform.system()} 客户端配置')
     print('为 NekoAI 配置 Claude Code、Codex、Gemini CLI 或 DeepSeek Harness。')
@@ -602,7 +677,7 @@ def main():
         choice = input('  请选择 1-4：').strip()
 
     heading('第 2 步 - 粘贴 API Key')
-    api_key = normalize_api_key(getpass.getpass('  API Key（输入已隐藏）：'))
+    api_key = normalize_api_key(read_secret('  API Key（输入已隐藏）：'))
 
     base_url = normalize_gateway_url(GATEWAY_URL)
     detail(f'网关地址：{base_url}')

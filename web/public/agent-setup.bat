@@ -16,7 +16,7 @@ $ProgressPreference = 'SilentlyContinue'
 $GatewayUrl = 'https://ai.nekocore.cn'
 $CodexModelCatalogUrl = 'https://ai.nekocore.cn/codex/models'
 $ProviderName = 'NekoAI'
-$DshModel = 'gpt-5.6-sol'
+$DshModel = 'claude-fable-5-1'
 $DshCredentialRef = 'NEWAPI_API_KEY'
 $DshProviderId = 'new-api'
 
@@ -106,6 +106,62 @@ function ConvertTo-TomlString([string]$Value) {
   return '"' + $Value.Replace('\', '\\').Replace('"', '\"') + '"'
 }
 
+function Ensure-CodexFeature([System.Collections.Generic.List[string]]$Lines, [string]$Key, [string]$ValueLine) {
+  $headerPattern = '^\s*\[\s*features\s*\]\s*(?:#.*)?$'
+  $keyPattern = '^\s*' + [regex]::Escape($Key) + '\s*='
+  for ($index = 0; $index -lt $Lines.Count; $index++) {
+    if ($Lines[$index] -notmatch $headerPattern) {
+      continue
+    }
+    $end = $Lines.Count
+    for ($next = $index + 1; $next -lt $Lines.Count; $next++) {
+      if ($Lines[$next] -match '^\s*\[') {
+        $end = $next
+        break
+      }
+    }
+    $body = New-Object System.Collections.Generic.List[string]
+    $seen = $false
+    for ($bodyIndex = $index + 1; $bodyIndex -lt $end; $bodyIndex++) {
+      if ($Lines[$bodyIndex] -match $keyPattern) {
+        if ($seen) {
+          continue
+        }
+        $seen = $true
+        $body.Add($ValueLine)
+      } else {
+        $body.Add($Lines[$bodyIndex])
+      }
+    }
+    if (-not $seen) {
+      $insertAt = $body.Count
+      while ($insertAt -gt 0 -and [string]::IsNullOrWhiteSpace($body[$insertAt - 1])) {
+        $insertAt--
+      }
+      $body.Insert($insertAt, $ValueLine)
+    }
+    $result = New-Object System.Collections.Generic.List[string]
+    for ($copy = 0; $copy -le $index; $copy++) {
+      $result.Add($Lines[$copy])
+    }
+    foreach ($line in $body) {
+      $result.Add($line)
+    }
+    for ($copy = $end; $copy -lt $Lines.Count; $copy++) {
+      $result.Add($Lines[$copy])
+    }
+    Write-Output -NoEnumerate $result
+    return
+  }
+  while ($Lines.Count -gt 0 -and [string]::IsNullOrWhiteSpace($Lines[$Lines.Count - 1])) {
+    $Lines.RemoveAt($Lines.Count - 1)
+  }
+  $Lines.Add('')
+  $Lines.Add('[features]')
+  $Lines.Add($ValueLine)
+  Write-Output -NoEnumerate $Lines
+}
+
 function Update-CodexConfig([string]$Path, [string]$BaseUrl, [string]$ApiKey, [string]$Stamp) {
   Backup-File $Path $Stamp
   $codexHome = Split-Path -Parent $Path
@@ -178,12 +234,13 @@ function Update-CodexConfig([string]$Path, [string]$BaseUrl, [string]$ApiKey, [s
     $prefix.Add('model_provider = "newapi"')
   }
   if (-not $hasModel) {
-    $prefix.Add('model = "gpt-5.6-sol"')
+    $prefix.Add('model = "claude-fable-5-1"')
   }
   if ($prefix.Count -gt 0) {
     $output.InsertRange(0, $prefix)
   }
 
+  $output = Ensure-CodexFeature $output 'api_key_model_discovery' 'api_key_model_discovery = true'
   while ($output.Count -gt 0 -and [string]::IsNullOrWhiteSpace($output[$output.Count - 1])) {
     $output.RemoveAt($output.Count - 1)
   }

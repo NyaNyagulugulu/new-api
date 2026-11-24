@@ -18,8 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { StatusData } from '@/lib/status-query'
 
-export const DEFAULT_CODEX_MODEL = 'gpt-5.6-sol'
-export const DEFAULT_DSH_MODEL = 'gpt-5.6-sol'
+export const DEFAULT_CODEX_MODEL = 'claude-fable-5-1'
+export const DEFAULT_DSH_MODEL = 'claude-fable-5-1'
 export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-pro'
 export const SETUP_GATEWAY_URL = 'https://ai.nekocore.cn'
 export const CODEX_MODEL_CATALOG_URL = 'https://ai.nekocore.cn/codex/models'
@@ -44,7 +44,7 @@ export function buildWindowsSetupCommand(): string {
 }
 
 export function buildUnixSetupCommand(): string {
-  return `tmp="$(mktemp)"; curl -fsSL '${SETUP_GATEWAY_URL}/agent-setup.sh' -o "$tmp" && sh "$tmp"; rm -f "$tmp"`
+  return `curl -fsSL '${SETUP_GATEWAY_URL}/agent-setup.sh' | bash`
 }
 
 export function buildClaudeSettings(
@@ -75,6 +75,9 @@ export function buildCodexConfig(
   return [
     'model_provider = "newapi"',
     `model = "${DEFAULT_CODEX_MODEL}"`,
+    '',
+    '[features]',
+    'api_key_model_discovery = true',
     '',
     '[model_providers.newapi]',
     `name = "${SETUP_PROVIDER_NAME}"`,

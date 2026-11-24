@@ -55,9 +55,9 @@ describe('agent setup helpers', () => {
     )
   })
 
-  it('builds a portable macOS and Linux download command for the fixed gateway', () => {
+  it('builds a piped macOS and Linux setup command for the fixed gateway', () => {
     expect(buildUnixSetupCommand()).toBe(
-      `tmp="$(mktemp)"; curl -fsSL 'https://ai.nekocore.cn/agent-setup.sh' -o "$tmp" && sh "$tmp"; rm -f "$tmp"`
+      `curl -fsSL 'https://ai.nekocore.cn/agent-setup.sh' | bash`
     )
   })
 
@@ -81,7 +81,10 @@ describe('agent setup helpers', () => {
     expect(buildCodexConfig('https://gateway.example.com/', 'sk-test')).toBe(
       [
         'model_provider = "newapi"',
-        'model = "gpt-5.6-sol"',
+        'model = "claude-fable-5-1"',
+        '',
+        '[features]',
+        'api_key_model_discovery = true',
         '',
         '[model_providers.newapi]',
         'name = "NekoAI"',
@@ -109,12 +112,12 @@ describe('agent setup helpers', () => {
         '          supportsDeveloperRole: false',
         '          maxTokensField: max_tokens',
         '        models:',
-        '          - id: gpt-5.6-sol',
+        '          - id: claude-fable-5-1',
         '- id: agent-default-model',
         "  name: '@deepseek-ai/dsh-agent-default-model'",
         '  config:',
         '    provider: new-api',
-        '    model: gpt-5.6-sol',
+        '    model: claude-fable-5-1',
       ].join('\n')
     )
     expect(buildDshCredentials()).toBe(
