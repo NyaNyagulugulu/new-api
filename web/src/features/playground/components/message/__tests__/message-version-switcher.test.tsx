@@ -57,6 +57,19 @@ test('switches to the next stored assistant response version', async () => {
   expect(onSwitchVersion).toHaveBeenCalledWith(message, 'version-2')
 })
 
+test('shows the version position before the response is regenerated', () => {
+  render(
+    <MessageVersionSwitcher
+      message={{ ...message, versions: message.versions.slice(0, 1) }}
+      onSwitchVersion={vi.fn()}
+    />
+  )
+
+  expect(screen.getByText('1 / 1')).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
+})
+
 test('disables switching while a response is generating', () => {
   render(
     <MessageVersionSwitcher

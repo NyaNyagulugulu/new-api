@@ -32,7 +32,12 @@ type MessageVersionSwitcherProps = {
 
 export function MessageVersionSwitcher(props: MessageVersionSwitcherProps) {
   const { t } = useTranslation()
-  if (props.message.versions.length < 2) return null
+  if (
+    props.message.from !== 'assistant' ||
+    props.message.versions.length === 0
+  ) {
+    return null
+  }
 
   const currentVersion = getCurrentVersion(props.message)
   const currentIndex = Math.max(
