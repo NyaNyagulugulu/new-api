@@ -166,7 +166,7 @@ export function PlaygroundHistorySidebar(props: PlaygroundHistorySidebarProps) {
         ) : (
           <div className='grid gap-4 p-1'>
             {sessionGroups.map((group) => (
-              <section className='grid gap-1' key={group.key}>
+              <section className='grid min-w-0 gap-1' key={group.key}>
                 <h2 className='text-muted-foreground px-2 py-1 text-[11px] font-medium'>
                   {t(GROUP_LABEL_KEYS[group.key])}
                 </h2>
@@ -179,19 +179,25 @@ export function PlaygroundHistorySidebar(props: PlaygroundHistorySidebarProps) {
                   const title = getChatSessionTitle(session, fallbackTitle)
 
                   return (
-                    <div className='group/chat-row relative' key={session.id}>
+                    <div
+                      className='group/chat-row relative min-w-0 overflow-hidden'
+                      key={session.id}
+                    >
                       <Button
                         aria-current={isActive ? 'page' : undefined}
                         className={cn(
-                          'h-9 w-full justify-start rounded-lg px-2.5 pr-14 text-left text-sm font-normal',
+                          'h-9 w-full min-w-0 justify-start overflow-hidden rounded-lg px-2.5 pr-14 text-left text-sm font-normal',
                           isActive &&
                             'bg-sidebar-accent text-sidebar-accent-foreground hover:bg-sidebar-accent'
                         )}
                         onClick={() => props.onSelectChat(session.id)}
+                        title={title}
                         type='button'
                         variant='ghost'
                       >
-                        <span className='truncate'>{title}</span>
+                        <span className='min-w-0 flex-1 truncate text-left'>
+                          {title}
+                        </span>
                       </Button>
 
                       {isGenerating ? (

@@ -25,13 +25,15 @@ const (
 var ErrChatConversationForbidden = errors.New("chat conversation belongs to another user")
 
 type ChatConversation struct {
-	Id        string          `json:"id" gorm:"primaryKey;type:varchar(64)"`
-	UserId    int             `json:"-" gorm:"not null;index:idx_chat_conversations_user_updated,priority:1"`
-	Title     string          `json:"title" gorm:"type:varchar(200);not null;default:''"`
-	PersonaId int64           `json:"persona_id" gorm:"not null;default:0;index:idx_chat_conversations_user_persona"`
-	Messages  json.RawMessage `json:"messages" gorm:"type:json;not null"`
-	CreatedAt int64           `json:"created_at" gorm:"type:bigint;not null;default:0"`
-	UpdatedAt int64           `json:"updated_at" gorm:"type:bigint;not null;default:0;index:idx_chat_conversations_user_updated,priority:2"`
+	Id            string          `json:"id" gorm:"primaryKey;type:varchar(64)"`
+	UserId        int             `json:"-" gorm:"not null;index:idx_chat_conversations_user_updated,priority:1"`
+	Title         string          `json:"title" gorm:"type:varchar(200);not null;default:''"`
+	PersonaId     int64           `json:"persona_id" gorm:"not null;default:0;index:idx_chat_conversations_user_persona"`
+	Messages      json.RawMessage `json:"messages" gorm:"type:json;not null"`
+	// Avoid GORM's automatic CreatedAt/UpdatedAt fields so client-provided
+	// conversation timestamps are stored exactly as sent.
+	StartedAt     int64           `json:"created_at" gorm:"column:created_at;type:bigint;not null;default:0"`
+	LastMessageAt int64           `json:"updated_at" gorm:"column:updated_at;type:bigint;not null;default:0;index:idx_chat_conversations_user_updated,priority:2"`
 }
 
 func (ChatConversation) TableName() string {
@@ -77,6 +79,7 @@ func ListChatConversations(ctx context.Context, userId int) ([]ChatConversation,
 	err := DB.WithContext(ctx).
 		Where("user_id = ?", userId).
 		Order("updated_at DESC").
+		Order("id ASC").
 		Limit(MaxChatConversations).
 		Find(&conversations).Error
 	return conversations, err
@@ -126,13 +129,13 @@ func SyncChatConversations(
 					updatedAt = now
 				}
 				if err := tx.Create(&ChatConversation{
-					Id:        input.Id,
-					UserId:    userId,
-					Title:     input.Title,
-					PersonaId: input.PersonaId,
-					Messages:  input.Messages,
-					CreatedAt: createdAt,
-					UpdatedAt: updatedAt,
+					Id:            input.Id,
+					UserId:        userId,
+					Title:         input.Title,
+					PersonaId:     input.PersonaId,
+					Messages:      input.Messages,
+					StartedAt:     createdAt,
+					LastMessageAt: updatedAt,
 				}).Error; err != nil {
 					return err
 				}
@@ -144,7 +147,7 @@ func SyncChatConversations(
 				if err := ensureUserPersonaOwned(tx, userId, input.PersonaId); err != nil {
 					return err
 				}
-				if input.UpdatedAt < existing.UpdatedAt {
+				if input.UpdatedAt < existing.LastMessageAt {
 					continue
 				}
 				title := input.Title

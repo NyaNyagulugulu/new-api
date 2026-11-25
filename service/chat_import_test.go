@@ -3,6 +3,7 @@ package service
 import (
 	"archive/zip"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -131,6 +132,53 @@ func TestImportTruncatesLongTitlesAtAValidUTF8Boundary(t *testing.T) {
 	require.Len(t, result.Sessions, 1)
 	assert.LessOrEqual(t, len(result.Sessions[0].Title), model.MaxChatConversationTitle)
 	assert.True(t, utf8.ValidString(result.Sessions[0].Title))
+}
+
+func TestImportDeepSeekChatArchiveIncludesImages(t *testing.T) {
+	imageData, err := base64.StdEncoding.DecodeString(
+		"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=",
+	)
+	require.NoError(t, err)
+
+	result, err := ImportChatConversationsFromPath(writeChatImportZip(t, map[string]string{
+		"chat_sessions/image-chat.json": `{
+			"id":"image-chat",
+			"title":"Image conversation",
+			"inserted_at":"2026-11-25T00:00:00Z",
+			"updated_at":"2026-11-25T00:00:02Z",
+			"messages":[{
+				"id":1,
+				"role":"USER",
+				"inserted_at":"2026-11-25T00:00:01Z",
+				"fragments":[
+					{"type":"FILE","files":[{
+						"id":"image-1",
+						"file_name":"photo.png",
+						"export_path":"chat_sessions/image-chat_files/photo.png",
+						"is_image":true
+					},{
+						"id":"outside-session",
+						"file_name":"other.png",
+						"export_path":"chat_sessions/other-chat_files/other.png",
+						"is_image":true
+					}]},
+					{"type":"REQUEST","content":"What is shown?"}
+				]
+			}]
+		}`,
+		"chat_sessions/image-chat_files/photo.png": string(imageData),
+	}))
+
+	require.NoError(t, err)
+	require.Len(t, result.Sessions, 1)
+	require.Len(t, result.Sessions[0].Messages, 1)
+	attachments := result.Sessions[0].Messages[0].Versions[0].Attachments
+	require.Len(t, attachments, 1)
+	assert.Equal(t, "image-1", attachments[0].ID)
+	assert.Equal(t, "image", attachments[0].Kind)
+	assert.Equal(t, "photo.png", attachments[0].Name)
+	assert.Equal(t, "image/png", attachments[0].MediaType)
+	assert.True(t, strings.HasPrefix(attachments[0].DataURL, "data:image/png;base64,"))
 }
 
 func TestImportURLRejectsSSRFTargets(t *testing.T) {

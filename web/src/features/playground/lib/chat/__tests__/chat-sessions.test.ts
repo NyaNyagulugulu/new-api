@@ -109,6 +109,31 @@ test('sessions inside each date group are ordered by their latest message', () =
   ])
 })
 
+test('streaming timestamp churn does not reorder conversations', () => {
+  const now = new Date(2026, 10, 23, 12).getTime()
+  const older = createSession('older', now)
+  const newer = createSession('newer', now)
+  older.messages = [
+    { ...userMessage, key: 'older-message', createdAt: now - 2_000 },
+  ]
+  newer.messages = [
+    { ...userMessage, key: 'newer-message', createdAt: now - 1_000 },
+  ]
+
+  const groups = groupChatSessionsByDate(
+    [
+      { ...older, updatedAt: now + 20_000 },
+      { ...newer, updatedAt: now + 10_000 },
+    ],
+    now
+  )
+
+  expect(groups[0].sessions.map((session) => session.id)).toEqual([
+    'newer',
+    'older',
+  ])
+})
+
 test('sessions with the same latest-message time keep a deterministic order', () => {
   const now = new Date(2026, 10, 23, 12).getTime()
 

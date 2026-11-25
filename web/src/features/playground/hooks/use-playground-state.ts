@@ -30,6 +30,7 @@ import {
   applyMessageStateUpdate,
   createChatSessionId,
   createChatSession,
+  getChatSessionRecencyTime,
   getInitialParameterEnabled,
   getInitialPlaygroundConfig,
   loadActiveChatSessionId,
@@ -461,7 +462,11 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
           personaId: existing?.personaId ?? personaId,
         }
         merged.set(session.id, session)
-        if (!newestImported || session.updatedAt > newestImported.updatedAt) {
+        if (
+          !newestImported ||
+          getChatSessionRecencyTime(session) >
+            getChatSessionRecencyTime(newestImported)
+        ) {
           newestImported = session
         }
       }
@@ -469,7 +474,8 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
       const ordered = [...merged.values()]
         .sort(
           (left, right) =>
-            right.updatedAt - left.updatedAt || left.id.localeCompare(right.id)
+            getChatSessionRecencyTime(right) -
+              getChatSessionRecencyTime(left) || left.id.localeCompare(right.id)
         )
         .slice(0, MAX_STORED_SESSIONS)
       sessionsRef.current = ordered

@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import i18next from 'i18next'
 import { beforeAll, expect, test, vi } from 'vitest'
@@ -203,4 +203,34 @@ test('shows a spinner for a running conversation and a dot for an unread one', (
   )
 
   expect(screen.getByLabelText('Unread')).toBeInTheDocument()
+})
+
+test('keeps a very long conversation title inside the sidebar row', () => {
+  const longTitle = 'Extremely long conversation title '.repeat(12)
+  const accessibleTitle = longTitle.trim()
+
+  render(
+    <PlaygroundHistorySidebar
+      activeSessionId='chat-long'
+      onDeleteChat={() => undefined}
+      onNewChat={() => undefined}
+      onRenameChat={() => undefined}
+      onSelectChat={() => undefined}
+      sessions={[
+        {
+          ...sessions[0],
+          id: 'chat-long',
+          title: longTitle,
+        },
+      ]}
+    />
+  )
+
+  const button = screen.getByRole('button', { name: accessibleTitle })
+  const title = within(button).getByText(accessibleTitle)
+
+  expect(button).toHaveClass('min-w-0', 'overflow-hidden')
+  expect(button.parentElement).toHaveClass('min-w-0', 'overflow-hidden')
+  expect(title).toHaveClass('min-w-0', 'flex-1', 'truncate')
+  expect(button).toHaveAttribute('title', longTitle)
 })

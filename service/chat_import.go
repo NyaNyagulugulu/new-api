@@ -4,12 +4,14 @@ import (
 	"archive/zip"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"regexp"
 	"sort"
 	"strings"
@@ -26,6 +28,10 @@ const (
 	MaxChatImportSessionJSONBytes = 16 << 20
 	MaxChatImportSessions         = 50
 	MaxChatImportZipEntries       = 5_000
+	MaxChatImportImageBytes       = 4 << 20
+	MaxChatImportImagesPerMessage = 8
+	MaxChatImportMessageImages    = 8 << 20
+	MaxChatImportTotalImages      = 32 << 20
 	chatImportRequestTimeout      = 10 * time.Minute
 	chatImportMaxRedirects        = 3
 	deepSeekSessionDirectory      = "chat_sessions/"
@@ -44,8 +50,24 @@ var (
 )
 
 type ImportedMessageVersion struct {
-	ID      string `json:"id"`
-	Content string `json:"content"`
+	ID                string                      `json:"id"`
+	Content           string                      `json:"content"`
+	Attachments       []ImportedMessageAttachment `json:"attachments,omitempty"`
+	attachmentSources []deepSeekAttachmentSource
+}
+
+type ImportedMessageAttachment struct {
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	Name      string `json:"name"`
+	MediaType string `json:"mediaType"`
+	DataURL   string `json:"dataUrl"`
+}
+
+type deepSeekAttachmentSource struct {
+	ID         string
+	Name       string
+	ExportPath string
 }
 
 type ImportedMessageReasoning struct {
@@ -100,8 +122,15 @@ type deepSeekMessage struct {
 }
 
 type deepSeekFragment struct {
-	Type    string `json:"type"`
-	Content string `json:"content"`
+	Type    string            `json:"type"`
+	Content string            `json:"content"`
+	Files   []deepSeekFileRef `json:"files"`
+}
+
+type deepSeekFileRef struct {
+	ID         string `json:"id"`
+	FileName   string `json:"file_name"`
+	ExportPath string `json:"export_path"`
 }
 
 func ImportChatConversationsFromPath(path string) (ChatImportResult, error) {
@@ -212,7 +241,9 @@ func importDeepSeekZip(file *os.File, size int64) (ChatImportResult, error) {
 	if len(sessions) == 0 {
 		return ChatImportResult{}, fmt.Errorf("no DeepSeek conversations found")
 	}
-	return finalizeChatImport(sessions, len(sessions)), nil
+	result := finalizeChatImport(sessions, len(sessions))
+	hydrateDeepSeekImages(&result, archive)
+	return result, nil
 }
 
 func normalizeChatImportZipEntryName(name string) string {
@@ -310,8 +341,24 @@ func convertDeepSeekSessionValue(
 
 		contentParts := make([]string, 0, len(source.Fragments))
 		reasoningParts := make([]string, 0, len(source.Fragments))
+		attachmentSources := make([]deepSeekAttachmentSource, 0)
 		for _, fragment := range source.Fragments {
 			content := strings.TrimSpace(fragment.Content)
+			for _, file := range fragment.Files {
+				exportPath := normalizeChatImportZipEntryName(file.ExportPath)
+				if exportPath == "" {
+					continue
+				}
+				name := strings.TrimSpace(file.FileName)
+				if name == "" {
+					name = path.Base(exportPath)
+				}
+				attachmentSources = append(attachmentSources, deepSeekAttachmentSource{
+					ID:         strings.TrimSpace(file.ID),
+					Name:       name,
+					ExportPath: exportPath,
+				})
+			}
 			if content == "" {
 				continue
 			}
@@ -323,13 +370,16 @@ func convertDeepSeekSessionValue(
 		}
 		content := strings.Join(contentParts, "\n\n")
 		reasoning := strings.Join(reasoningParts, "\n\n")
-		if content == "" && reasoning == "" {
+		if content == "" && reasoning == "" && len(attachmentSources) == 0 {
 			continue
 		}
 
 		messageTime := parseChatImportTime(source.InsertedAt)
 		if messageTime == 0 {
-			messageTime = createdAt
+			messageTime = updatedAt
+			if messageTime == 0 {
+				messageTime = createdAt
+			}
 		}
 		if messageTime > updatedAt {
 			updatedAt = messageTime
@@ -340,9 +390,13 @@ func convertDeepSeekSessionValue(
 		}
 		key := fmt.Sprintf("%s:%s:%d", sessionID, messageID, messageIndex)
 		message := ImportedMessage{
-			Key:       key,
-			From:      role,
-			Versions:  []ImportedMessageVersion{{ID: key + "-v1", Content: content}},
+			Key:  key,
+			From: role,
+			Versions: []ImportedMessageVersion{{
+				ID:                key + "-v1",
+				Content:           content,
+				attachmentSources: attachmentSources,
+			}},
 			CreatedAt: messageTime,
 			Status:    "complete",
 		}
@@ -389,6 +443,66 @@ func convertDeepSeekSessionValue(
 	}, nil
 }
 
+func hydrateDeepSeekImages(result *ChatImportResult, archive *zip.Reader) {
+	entries := make(map[string]*zip.File, len(archive.File))
+	for _, entry := range archive.File {
+		entries[normalizeChatImportZipEntryName(entry.Name)] = entry
+	}
+
+	var totalBytes uint64
+	for sessionIndex := range result.Sessions {
+		session := &result.Sessions[sessionIndex]
+		expectedPrefix := fmt.Sprintf("%s%s_files/", deepSeekSessionDirectory, session.ID)
+		for messageIndex := range session.Messages {
+			message := &session.Messages[messageIndex]
+			for versionIndex := range message.Versions {
+				version := &message.Versions[versionIndex]
+				var messageBytes uint64
+				loaded := 0
+				for sourceIndex, source := range version.attachmentSources {
+					if loaded >= MaxChatImportImagesPerMessage {
+						break
+					}
+					if !strings.HasPrefix(source.ExportPath, expectedPrefix) ||
+						strings.Contains(source.ExportPath, "..") {
+						continue
+					}
+					entry, ok := entries[source.ExportPath]
+					if !ok || entry.FileInfo().IsDir() ||
+						entry.UncompressedSize64 > MaxChatImportImageBytes ||
+						messageBytes+entry.UncompressedSize64 > MaxChatImportMessageImages ||
+						totalBytes+entry.UncompressedSize64 > MaxChatImportTotalImages {
+						continue
+					}
+					data, err := readZipEntry(entry, MaxChatImportImageBytes)
+					if err != nil {
+						continue
+					}
+					mediaType := http.DetectContentType(data)
+					if !strings.HasPrefix(mediaType, "image/") {
+						continue
+					}
+					attachmentID := source.ID
+					if attachmentID == "" {
+						attachmentID = fmt.Sprintf("%s:attachment:%d", message.Key, sourceIndex)
+					}
+					version.Attachments = append(version.Attachments, ImportedMessageAttachment{
+						ID:        attachmentID,
+						Kind:      "image",
+						Name:      source.Name,
+						MediaType: mediaType,
+						DataURL:   "data:" + mediaType + ";base64," + base64.StdEncoding.EncodeToString(data),
+					})
+					messageBytes += entry.UncompressedSize64
+					totalBytes += entry.UncompressedSize64
+					loaded++
+				}
+				version.attachmentSources = nil
+			}
+		}
+	}
+}
+
 func cleanChatImportSessionID(value string) string {
 	original := strings.TrimSpace(value)
 	value = chatImportSessionIDPattern.ReplaceAllString(original, "-")
@@ -428,7 +542,7 @@ func finalizeChatImport(sessions []ImportedChatSession, found int) ChatImportRes
 	byID := make(map[string]ImportedChatSession, len(sessions))
 	for _, session := range sessions {
 		existing, ok := byID[session.ID]
-		if !ok || session.UpdatedAt > existing.UpdatedAt {
+		if !ok || importedChatSessionRecency(session) > importedChatSessionRecency(existing) {
 			byID[session.ID] = session
 		}
 	}
@@ -437,7 +551,7 @@ func finalizeChatImport(sessions []ImportedChatSession, found int) ChatImportRes
 		unique = append(unique, session)
 	}
 	sort.SliceStable(unique, func(i, j int) bool {
-		return unique[i].UpdatedAt > unique[j].UpdatedAt
+		return importedChatSessionRecency(unique[i]) > importedChatSessionRecency(unique[j])
 	})
 	if len(unique) > MaxChatImportSessions {
 		unique = unique[:MaxChatImportSessions]
@@ -448,6 +562,19 @@ func finalizeChatImport(sessions []ImportedChatSession, found int) ChatImportRes
 		Imported: len(unique),
 		Skipped:  max(found-len(unique), 0),
 	}
+}
+
+func importedChatSessionRecency(session ImportedChatSession) int64 {
+	latest := int64(0)
+	for _, message := range session.Messages {
+		if message.CreatedAt > latest {
+			latest = message.CreatedAt
+		}
+	}
+	if latest > 0 {
+		return latest
+	}
+	return session.UpdatedAt
 }
 
 func DownloadChatImport(ctx context.Context, rawURL string) (string, error) {

@@ -121,6 +121,8 @@ func testChatConversationDatabaseMatrix(t *testing.T) {
 			require.Len(t, rows, 1)
 			assert.Equal(t, "First chat", rows[0].Title)
 			assert.Equal(t, persona.Id, rows[0].PersonaId)
+			assert.Equal(t, int64(10), rows[0].StartedAt)
+			assert.Equal(t, int64(20), rows[0].LastMessageAt)
 			assert.JSONEq(t, string(messages), string(rows[0].Messages))
 
 			otherRows, err := ListChatConversations(context.Background(), 2)
@@ -137,6 +139,7 @@ func testChatConversationDatabaseMatrix(t *testing.T) {
 			rows, err = ListChatConversations(context.Background(), 1)
 			require.NoError(t, err)
 			assert.Equal(t, "Updated chat", rows[0].Title)
+			assert.Equal(t, int64(30), rows[0].LastMessageAt)
 
 			staleSession := session
 			staleSession.Title = "Stale title"
@@ -163,6 +166,7 @@ func testChatConversationDatabaseMatrix(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, "Updated chat", rows[0].Title)
 			assert.JSONEq(t, string(newerWithoutTitle.Messages), string(rows[0].Messages))
+			assert.Equal(t, int64(40), rows[0].LastMessageAt)
 
 			require.ErrorIs(t, SyncChatConversations(
 				context.Background(),
@@ -189,12 +193,14 @@ func testChatConversationDatabaseMatrix(t *testing.T) {
 			rows, err = ListChatConversations(context.Background(), 1)
 			require.NoError(t, err)
 			require.Len(t, rows, 2)
+			assert.Equal(t, "chat-2", rows[0].Id)
 
 			require.NoError(t, DeleteChatConversation(context.Background(), 1, "chat-1"))
 			rows, err = ListChatConversations(context.Background(), 1)
 			require.NoError(t, err)
 			require.Len(t, rows, 1)
 			assert.Equal(t, "chat-2", rows[0].Id)
+			assert.Equal(t, int64(50), rows[0].LastMessageAt)
 		})
 	}
 }

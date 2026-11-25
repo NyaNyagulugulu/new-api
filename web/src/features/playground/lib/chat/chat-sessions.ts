@@ -35,7 +35,7 @@ function getMessageText(message: Message): string {
   return message.versions[0]?.content ?? ''
 }
 
-export function normalizeChatSessionRecency(session: ChatSession): ChatSession {
+export function getChatSessionLatestMessageTime(session: ChatSession): number {
   let latestMessageAt = 0
   for (const message of session.messages) {
     for (const timestamp of [
@@ -48,6 +48,17 @@ export function normalizeChatSessionRecency(session: ChatSession): ChatSession {
       }
     }
   }
+  return latestMessageAt
+}
+
+export function getChatSessionRecencyTime(session: ChatSession): number {
+  // Streaming also bumps session.updatedAt. Prefer stable message timestamps so
+  // sidebar order changes only on real conversation activity.
+  return getChatSessionLatestMessageTime(session) || session.updatedAt
+}
+
+export function normalizeChatSessionRecency(session: ChatSession): ChatSession {
+  const latestMessageAt = getChatSessionLatestMessageTime(session)
   if (latestMessageAt === 0 || latestMessageAt === session.updatedAt) {
     return session
   }
@@ -115,16 +126,17 @@ function getSessionDateGroup(
   session: ChatSession,
   now: number
 ): ChatSessionDateGroup {
+  const recency = getChatSessionRecencyTime(session)
   const startOfToday = getStartOfDay(now)
-  if (session.updatedAt >= startOfToday) {
+  if (recency >= startOfToday) {
     return 'today'
   }
 
-  if (session.updatedAt >= startOfToday - DAY_MS) {
+  if (recency >= startOfToday - DAY_MS) {
     return 'yesterday'
   }
 
-  if (session.updatedAt >= startOfToday - 7 * DAY_MS) {
+  if (recency >= startOfToday - 7 * DAY_MS) {
     return 'last7Days'
   }
 
@@ -132,7 +144,10 @@ function getSessionDateGroup(
 }
 
 function compareChatSessionsByRecency(left: ChatSession, right: ChatSession) {
-  return right.updatedAt - left.updatedAt || left.id.localeCompare(right.id)
+  return (
+    getChatSessionRecencyTime(right) - getChatSessionRecencyTime(left) ||
+    left.id.localeCompare(right.id)
+  )
 }
 
 export function groupChatSessionsByDate(
