@@ -64,6 +64,7 @@ func testUserMemoryDatabaseMatrix(t *testing.T) {
 			DB = db
 			t.Cleanup(func() {
 				require.NoError(t, db.Migrator().DropTable(&UserMemory{}))
+				require.NoError(t, db.Migrator().DropTable(&UserPersona{}))
 				DB = previousDB
 				require.NoError(t, sqlDB.Close())
 			})
@@ -75,8 +76,9 @@ func testUserMemoryDatabaseMatrix(t *testing.T) {
 				Content:     "Legacy memory",
 				Status:      UserMemoryStatusActive,
 			}).Error)
-			require.NoError(t, db.AutoMigrate(&UserMemory{}))
+			require.NoError(t, db.AutoMigrate(&UserPersona{}, &UserMemory{}))
 			assert.True(t, db.Migrator().HasColumn(&UserMemory{}, "Embedding"))
+			assert.True(t, db.Migrator().HasColumn(&UserMemory{}, "PersonaId"))
 			var legacyRows int64
 			require.NoError(t, db.Model(&UserMemory{}).Where("user_id = ?", 9).Count(&legacyRows).Error)
 			assert.Equal(t, int64(1), legacyRows)
@@ -186,6 +188,46 @@ func testUserMemoryDatabaseMatrix(t *testing.T) {
 			assert.Empty(t, listed)
 			require.NoError(t, db.Model(&UserMemory{}).Where("user_id = ?", 2).Count(&count).Error)
 			assert.Equal(t, int64(1), count)
+
+			persona := UserPersona{
+				UserId:    1,
+				Name:      "Luna",
+				Traits:    "A careful research assistant",
+				CreatedAt: 1,
+				UpdatedAt: 1,
+			}
+			require.NoError(t, db.Create(&persona).Error)
+			require.NoError(t, SaveUserMemories(context.Background(), 1, []UserMemoryInput{{
+				Content:    "The user likes detailed notes.",
+				Category:   "preference",
+				PersonaId:  0,
+				Importance: 0.8,
+			}}))
+			require.NoError(t, SaveUserMemories(context.Background(), 1, []UserMemoryInput{{
+				Content:    "The user likes detailed notes.",
+				Category:   "preference",
+				PersonaId:  persona.Id,
+				Importance: 0.8,
+			}}))
+			defaultMatches, err := SearchUserMemories(context.Background(), 1, UserMemorySearchOptions{
+				Query:         "detailed notes",
+				PersonaId:     0,
+				Limit:         5,
+				MinImportance: 0.2,
+				RetentionDays: 365,
+			})
+			require.NoError(t, err)
+			require.Len(t, defaultMatches, 1)
+			personaMatches, err := SearchUserMemories(context.Background(), 1, UserMemorySearchOptions{
+				Query:         "detailed notes",
+				PersonaId:     persona.Id,
+				Limit:         5,
+				MinImportance: 0.2,
+				RetentionDays: 365,
+			})
+			require.NoError(t, err)
+			require.Len(t, personaMatches, 1)
+			assert.NotEqual(t, defaultMatches[0].Id, personaMatches[0].Id)
 		})
 	}
 }

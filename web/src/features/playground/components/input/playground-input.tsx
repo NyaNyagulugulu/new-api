@@ -46,6 +46,7 @@ import type {
   PlaygroundConfig,
   MessageAttachment,
   ReasoningEffort,
+  UserPersona,
 } from '../../types'
 import { PlaygroundInputControls } from './playground-input-controls'
 import { PlaygroundParameterPanel } from './playground-parameter-panel'
@@ -87,7 +88,10 @@ interface PlaygroundInputProps {
     value: boolean
   ) => void
   onReasoningEffortChange: (value: ReasoningEffort) => void
+  onPersonaChange: (personaId: number) => void
   parameterEnabled: ParameterEnabled
+  personaId: number
+  personas: UserPersona[]
 }
 
 export function PlaygroundInput({
@@ -106,7 +110,10 @@ export function PlaygroundInput({
   onConfigChange,
   onParameterEnabledChange,
   onReasoningEffortChange,
+  onPersonaChange,
   parameterEnabled,
+  personaId,
+  personas,
 }: PlaygroundInputProps) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
@@ -166,11 +173,14 @@ export function PlaygroundInput({
             onGroupChange={onGroupChange}
             onModelChange={onModelChange}
             onReasoningEffortChange={onReasoningEffortChange}
+            onPersonaChange={onPersonaChange}
             onWebSearchChange={(enabled) =>
               onConfigChange('webSearch', enabled)
             }
             onStop={onStop}
             reasoningEffort={config.reasoningEffort}
+            personaId={personaId}
+            personas={personas}
             text={text}
             tools={
               <PlaygroundParameterPanel

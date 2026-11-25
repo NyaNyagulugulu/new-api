@@ -69,6 +69,15 @@ test('unwraps memory search results from the API success envelope', async () => 
   })
 
   await expect(
-    searchUserMemories('what is my name', 'default')
+    searchUserMemories('what is my name', 'default', 3)
   ).resolves.toEqual([{ id: 1, content: 'Preferred name is Hachimi' }])
+  expect(apiMocks.post).toHaveBeenCalledWith(
+    '/api/user/self/memories/search',
+    {
+      query: 'what is my name',
+      group: 'default',
+      persona_id: 3,
+    },
+    expect.objectContaining({ signal: undefined })
+  )
 })

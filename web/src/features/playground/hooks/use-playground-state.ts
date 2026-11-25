@@ -53,7 +53,7 @@ import type {
 const SESSION_SAVE_DEBOUNCE_MS = 500
 const SERVER_SYNC_DEBOUNCE_MS = 1200
 const EMPTY_MESSAGES: Message[] = []
-type SyncedSessionState = Pick<ChatSession, 'title' | 'updatedAt'>
+type SyncedSessionState = Pick<ChatSession, 'title' | 'updatedAt' | 'personaId'>
 
 /**
  * Main state management hook for the web chat.
@@ -74,6 +74,7 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
   const [groups, setGroups] = useState<GroupOption[]>([])
 
   const activeSessionIdRef = useRef<string | null>(null)
+  const personaIdRef = useRef(config.personaId)
   const initialSessionIdRef = useRef(initialSessionId)
   const sessionsRef = useRef<ChatSession[]>([])
   const hasLoadedSessionsRef = useRef(false)
@@ -97,7 +98,8 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
       return (
         !previous ||
         previous.updatedAt !== session.updatedAt ||
-        previous.title !== session.title
+        previous.title !== session.title ||
+        previous.personaId !== session.personaId
       )
     })
     if (changedSessions.length === 0) return
@@ -106,6 +108,7 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
       id: session.id,
       title: session.title,
       updatedAt: session.updatedAt,
+      personaId: session.personaId,
     }))
     void syncChatConversations(changedSessions)
       .then(() => {
@@ -119,13 +122,15 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
             previous &&
             (previous.updatedAt > session.updatedAt ||
               (previous.updatedAt === session.updatedAt &&
-                previous.title !== session.title))
+                (previous.title !== session.title ||
+                  previous.personaId !== session.personaId)))
           ) {
             continue
           }
           lastSyncedSessionsRef.current.set(session.id, {
             title: session.title,
             updatedAt: session.updatedAt,
+            personaId: session.personaId,
           })
         }
       })
@@ -153,7 +158,12 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
         !loadedSessions.some((session) => session.id === requestedSessionId)
       ) {
         loadedSessions = [
-          createChatSession([], Date.now(), requestedSessionId),
+          createChatSession(
+            [],
+            Date.now(),
+            requestedSessionId,
+            personaIdRef.current
+          ),
           ...loadedSessions,
         ]
       }
@@ -167,7 +177,11 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
       lastSyncedSessionsRef.current = new Map(
         serverSessions.map((session) => [
           session.id,
-          { title: session.title, updatedAt: session.updatedAt },
+          {
+            title: session.title,
+            updatedAt: session.updatedAt,
+            personaId: session.personaId,
+          },
         ])
       )
       sessionsRef.current = loadedSessions
@@ -189,7 +203,12 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
       previousSessions.some((session) => session.id === initialSessionId)
         ? previousSessions
         : [
-            createChatSession([], Date.now(), initialSessionId),
+            createChatSession(
+              [],
+              Date.now(),
+              initialSessionId,
+              personaIdRef.current
+            ),
             ...previousSessions,
           ]
     )
@@ -238,6 +257,9 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
     <K extends keyof PlaygroundConfig>(key: K, value: PlaygroundConfig[K]) => {
       setConfig((previousConfig) => {
         const updated = { ...previousConfig, [key]: value }
+        if (key === 'personaId' && typeof value === 'number') {
+          personaIdRef.current = value
+        }
         saveConfig(updated)
         return updated
       })
@@ -277,7 +299,12 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
           }
 
           return [
-            createChatSession(initialMessages, Date.now(), targetSessionId),
+            createChatSession(
+              initialMessages,
+              Date.now(),
+              targetSessionId,
+              personaIdRef.current
+            ),
             ...previousSessions,
           ]
         }
@@ -327,18 +354,52 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
     const sessionId = createChatSessionId()
     setActiveSessionId(sessionId)
     setSessions((previousSessions) => [
-      createChatSession([], Date.now(), sessionId),
+      createChatSession([], Date.now(), sessionId, personaIdRef.current),
       ...previousSessions,
     ])
     return sessionId
   }, [setActiveSessionId])
 
   const createNewChat = useCallback(() => {
+    const activeSession = sessionsRef.current.find(
+      (session) => session.id === activeSessionIdRef.current
+    )
+    const nextPersonaId = activeSession?.personaId ?? personaIdRef.current
+    personaIdRef.current = nextPersonaId
+    setConfig((previousConfig) => {
+      if (previousConfig.personaId === nextPersonaId) {
+        return previousConfig
+      }
+      const updated = { ...previousConfig, personaId: nextPersonaId }
+      saveConfig(updated)
+      return updated
+    })
     setSessions((previousSessions) =>
       previousSessions.filter((session) => session.messages.length > 0)
     )
     setActiveSessionId(null)
   }, [setActiveSessionId])
+
+  const selectPersona = useCallback(
+    (personaId: number) => {
+      const targetPersonaId = Math.max(0, personaId)
+      const activeId = activeSessionIdRef.current
+      if (!activeId) {
+        updateConfig('personaId', targetPersonaId)
+        return
+      }
+      personaIdRef.current = targetPersonaId
+      setSessions((previousSessions) =>
+        previousSessions.map((session) =>
+          session.id === activeId
+            ? { ...session, personaId: targetPersonaId }
+            : session
+        )
+      )
+      updateConfig('personaId', targetPersonaId)
+    },
+    [updateConfig]
+  )
 
   const selectChat = useCallback(
     (sessionId: string) => {
@@ -412,6 +473,7 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
     selectChat,
     renameChat,
     deleteChat,
+    selectPersona,
     resetConfig,
   }
 }

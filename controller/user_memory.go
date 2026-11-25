@@ -28,8 +28,14 @@ func GetUserMemories(c *gin.Context) {
 	if limit <= 0 {
 		limit = 20
 	}
+	personaId, err := strconv.ParseInt(c.DefaultQuery("persona_id", "0"), 10, 64)
+	if err != nil || personaId < 0 {
+		common.ApiErrorMsg(c, "Invalid parameters")
+		return
+	}
 	memories, err := model.SearchUserMemories(c.Request.Context(), userId, model.UserMemorySearchOptions{
 		Query:         c.Query("q"),
+		PersonaId:     personaId,
 		Limit:         limit,
 		MinImportance: settings.MinImportance,
 		RetentionDays: settings.RetentionDays,
@@ -58,8 +64,9 @@ func ListUserMemories(c *gin.Context) {
 }
 
 type searchUserMemoriesRequest struct {
-	Query string `json:"query"`
-	Group string `json:"group"`
+	Query     string `json:"query"`
+	Group     string `json:"group"`
+	PersonaId int64  `json:"persona_id"`
 }
 
 func SearchUserMemories(c *gin.Context) {
@@ -70,6 +77,10 @@ func SearchUserMemories(c *gin.Context) {
 	}
 	var request searchUserMemoriesRequest
 	if err := common.DecodeJson(c.Request.Body, &request); err != nil {
+		common.ApiErrorMsg(c, "Invalid parameters")
+		return
+	}
+	if request.PersonaId < 0 {
 		common.ApiErrorMsg(c, "Invalid parameters")
 		return
 	}
@@ -96,6 +107,7 @@ func SearchUserMemories(c *gin.Context) {
 	memories, err := model.SearchUserMemories(c.Request.Context(), userId, model.UserMemorySearchOptions{
 		Query:         request.Query,
 		Embedding:     embedding,
+		PersonaId:     request.PersonaId,
 		Limit:         settings.RetrieveLimit,
 		MinImportance: settings.MinImportance,
 		RetentionDays: settings.RetentionDays,

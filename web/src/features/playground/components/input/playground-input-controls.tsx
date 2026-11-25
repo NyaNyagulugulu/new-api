@@ -32,7 +32,13 @@ import {
 } from '@/components/ui/tooltip'
 
 import { getInputControlState } from '../../lib'
-import type { GroupOption, ModelOption, ReasoningEffort } from '../../types'
+import type {
+  GroupOption,
+  ModelOption,
+  ReasoningEffort,
+  UserPersona,
+} from '../../types'
+import { PlaygroundPersonaSelector } from './playground-persona-selector'
 import { PlaygroundReasoningSelector } from './playground-reasoning-selector'
 import { PlaygroundWebSearchToggle } from './playground-web-search-toggle'
 
@@ -46,10 +52,13 @@ type PlaygroundInputControlsProps = {
   modelValue: string
   onGroupChange: (value: string) => void
   onModelChange: (value: string) => void
+  onPersonaChange: (personaId: number) => void
   onStop?: () => void
   onReasoningEffortChange: (value: ReasoningEffort) => void
   reasoningEffort: ReasoningEffort
   webSearchEnabled: boolean
+  personaId: number
+  personas: UserPersona[]
   onWebSearchChange: (enabled: boolean) => void
   text: string
   tools: ReactNode
@@ -65,10 +74,13 @@ export function PlaygroundInputControls({
   modelValue,
   onGroupChange,
   onModelChange,
+  onPersonaChange,
   onStop,
   onReasoningEffortChange,
   reasoningEffort,
   webSearchEnabled,
+  personaId,
+  personas,
   onWebSearchChange,
   text,
   tools,
@@ -153,6 +165,12 @@ export function PlaygroundInputControls({
             disabled={disabled}
             onValueChange={onReasoningEffortChange}
             value={reasoningEffort}
+          />
+          <PlaygroundPersonaSelector
+            disabled={disabled}
+            onValueChange={onPersonaChange}
+            personas={personas}
+            value={personaId}
           />
           <PlaygroundWebSearchToggle
             disabled={disabled}

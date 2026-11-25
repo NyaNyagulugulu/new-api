@@ -15,6 +15,19 @@ import (
 	"gorm.io/gorm"
 )
 
+type chatConversationLegacy struct {
+	Id        string          `gorm:"primaryKey;type:varchar(64)"`
+	UserId    int             `gorm:"not null;index:idx_chat_conversations_user_updated,priority:1"`
+	Title     string          `gorm:"type:varchar(200);not null;default:''"`
+	Messages  json.RawMessage `gorm:"type:json;not null"`
+	CreatedAt int64           `gorm:"type:bigint;not null;default:0"`
+	UpdatedAt int64           `gorm:"type:bigint;not null;default:0;index:idx_chat_conversations_user_updated,priority:2"`
+}
+
+func (chatConversationLegacy) TableName() string {
+	return "chat_conversations"
+}
+
 func testChatConversationDatabaseMatrix(t *testing.T) {
 	t.Helper()
 	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
@@ -47,12 +60,36 @@ func testChatConversationDatabaseMatrix(t *testing.T) {
 			DB = db
 			t.Cleanup(func() {
 				require.NoError(t, db.Migrator().DropTable(&ChatConversation{}))
+				require.NoError(t, db.Migrator().DropTable(&UserPersona{}))
 				DB = previousDB
 				require.NoError(t, sqlDB.Close())
 			})
 
+			require.NoError(t, db.Migrator().DropTable(&ChatConversation{}))
+			require.NoError(t, db.AutoMigrate(&chatConversationLegacy{}))
+			require.NoError(t, db.Create(&chatConversationLegacy{
+				Id:        "legacy-chat",
+				UserId:    1,
+				Title:     "Legacy chat",
+				Messages:  json.RawMessage(`[{"key":"legacy-message"}]`),
+				CreatedAt: 1,
+				UpdatedAt: 1,
+			}).Error)
+			require.NoError(t, db.AutoMigrate(&UserPersona{}, &ChatConversation{}))
 			require.NoError(t, db.AutoMigrate(&ChatConversation{}))
-			require.NoError(t, db.AutoMigrate(&ChatConversation{}))
+			assert.True(t, db.Migrator().HasColumn(&ChatConversation{}, "PersonaId"))
+			var migrated ChatConversation
+			require.NoError(t, db.Where("id = ?", "legacy-chat").First(&migrated).Error)
+			assert.Zero(t, migrated.PersonaId)
+			require.NoError(t, DeleteChatConversation(context.Background(), 1, "legacy-chat"))
+			persona := UserPersona{
+				UserId:    1,
+				Name:      "Luna",
+				Traits:    "Calm and precise",
+				CreatedAt: 1,
+				UpdatedAt: 1,
+			}
+			require.NoError(t, db.Create(&persona).Error)
 
 			messages, err := common.Marshal([]map[string]any{
 				{
@@ -68,6 +105,7 @@ func testChatConversationDatabaseMatrix(t *testing.T) {
 			session := ChatConversationInput{
 				Id:        "chat-1",
 				Title:     "First chat",
+				PersonaId: persona.Id,
 				Messages:  json.RawMessage(messages),
 				CreatedAt: 10,
 				UpdatedAt: 20,
@@ -82,6 +120,7 @@ func testChatConversationDatabaseMatrix(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, rows, 1)
 			assert.Equal(t, "First chat", rows[0].Title)
+			assert.Equal(t, persona.Id, rows[0].PersonaId)
 			assert.JSONEq(t, string(messages), string(rows[0].Messages))
 
 			otherRows, err := ListChatConversations(context.Background(), 2)

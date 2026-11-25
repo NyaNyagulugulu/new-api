@@ -40,6 +40,7 @@ export const playgroundConfigSchema = z.object({
     .enum(['', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
     .optional(),
   webSearch: z.boolean().optional(),
+  personaId: z.number().int().nonnegative().optional(),
 })
 
 export const parameterEnabledSchema = z.object({
@@ -134,6 +135,7 @@ export const messagesSchema = z.array(messageSchema)
 export const chatSessionSchema = z.object({
   id: z.string().min(1),
   title: z.string().max(200),
+  personaId: z.number().int().nonnegative().default(0),
   messages: messagesSchema,
   createdAt: z.number(),
   updatedAt: z.number(),

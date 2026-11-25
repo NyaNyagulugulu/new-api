@@ -39,6 +39,7 @@ const sessions: ChatSession[] = [
   {
     id: 'chat-1',
     title: 'Database indexes',
+    personaId: 0,
     messages: [sessionMessage('message-1', 'Explain database indexes')],
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -46,6 +47,7 @@ const sessions: ChatSession[] = [
   {
     id: 'chat-2',
     title: 'Travel plan',
+    personaId: 0,
     messages: [sessionMessage('message-2', 'Plan a short trip')],
     createdAt: Date.now() - 8 * 24 * 60 * 60 * 1000,
     updatedAt: Date.now() - 8 * 24 * 60 * 60 * 1000,

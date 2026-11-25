@@ -73,6 +73,18 @@ vi.mock('../hooks', () => ({
   useAiChatTitles: vi.fn(),
   useLongTermMemoryReflection: vi.fn(),
   useMemorySettings: () => undefined,
+  usePersonas: () => ({
+    data: [
+      {
+        id: 0,
+        name: '',
+        traits: '',
+        is_default: true,
+        created_at: 0,
+        updated_at: 0,
+      },
+    ],
+  }),
   useChatHandler: () => ({
     sendChat: vi.fn(),
     stopGeneration: mocks.stopGeneration,

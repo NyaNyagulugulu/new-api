@@ -73,11 +73,13 @@ export function createChatSessionId(): string {
 export function createChatSession(
   messages: Message[] = [],
   timestamp = Date.now(),
-  id = createChatSessionId()
+  id = createChatSessionId(),
+  personaId = 0
 ): ChatSession {
   return {
     id,
     title: '',
+    personaId,
     messages,
     createdAt: timestamp,
     updatedAt: timestamp,

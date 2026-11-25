@@ -138,6 +138,22 @@ test('renaming a conversation does not change its latest-message time', async ()
   })
 })
 
+test('changing a persona updates the active conversation persona', async () => {
+  const { result } = renderHook(() => usePlaygroundState())
+  await waitFor(() => expect(result.current.isLoadingMessages).toBe(false))
+
+  let sessionId = ''
+  act(() => {
+    sessionId = result.current.ensureActiveSessionId()
+  })
+  act(() => result.current.selectPersona(7))
+
+  expect(
+    result.current.sessions.find((session) => session.id === sessionId)
+      ?.personaId
+  ).toBe(7)
+})
+
 function usePlaygroundHarness(contextWindowTokens?: number) {
   const state = usePlaygroundState()
   const chat = useChatHandler({

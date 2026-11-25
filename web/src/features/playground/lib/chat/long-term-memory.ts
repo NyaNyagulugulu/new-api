@@ -183,6 +183,7 @@ export function parseExtractedMemories(content: string): UserMemoryInput[] {
       keywords,
       category,
       importance,
+      persona_id: 0,
       conversation_id: '',
       source_key: '',
     })
@@ -207,6 +208,7 @@ export function extractExplicitMemoryInputs(
       keywords: [],
       category: 'preference',
       importance: 0.9,
+      persona_id: 0,
       conversation_id: conversationId,
       source_key: sourceKey,
     })

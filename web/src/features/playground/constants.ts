@@ -44,6 +44,7 @@ export const API_ENDPOINTS = {
   CHAT_CONVERSATIONS: '/api/user/self/chat_conversations',
   CHAT_CONVERSATIONS_SYNC: '/api/user/self/chat_conversations/sync',
   MEMORY_SETTINGS: '/api/user/self/memory_settings',
+  PERSONAS: '/api/user/self/personas',
   MEMORIES: '/api/user/self/memories',
   MEMORY_SEARCH: '/api/user/self/memories/search',
 } as const
@@ -65,6 +66,7 @@ export const DEFAULT_CONFIG: PlaygroundConfig = {
   stream: true,
   reasoningEffort: '',
   webSearch: false,
+  personaId: 0,
 }
 
 export const DEFAULT_PARAMETER_ENABLED: ParameterEnabled = {

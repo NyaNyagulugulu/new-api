@@ -24,6 +24,7 @@ import { handleServerError } from '@/lib/handle-server-error'
 import { searchUserMemories, sendChatCompletion } from '../api'
 import { ERROR_MESSAGES } from '../constants'
 import {
+  addPersonaContext,
   addLongTermMemoryContext,
   applyStreamingChunk,
   buildChatCompletionPayload,
@@ -53,6 +54,7 @@ import type {
   PlaygroundConfig,
   ParameterEnabled,
   UserMemory,
+  UserPersona,
   WebSearchSource,
   WebSearchStatus,
 } from '../types'
@@ -63,6 +65,8 @@ interface UseChatHandlerOptions {
   contextWindowTokens?: number
   memorySettings?: MemorySettings
   parameterEnabled: ParameterEnabled
+  persona?: UserPersona
+  personaId?: number
   onMessageUpdate: (
     updater: (prev: Message[]) => Message[],
     sessionId?: string
@@ -138,6 +142,8 @@ export function useChatHandler({
   contextWindowTokens,
   memorySettings,
   parameterEnabled,
+  persona,
+  personaId,
   onMessageUpdate,
 }: UseChatHandlerOptions) {
   const { t } = useTranslation()
@@ -455,10 +461,13 @@ export function useChatHandler({
       generation: number,
       memoryResults: UserMemory[] = []
     ) => {
-      const payload = addLongTermMemoryContext(
-        buildChatCompletionPayload(messages, config, parameterEnabled),
-        memoryResults,
-        memorySettings?.max_injected_chars ?? 0
+      const payload = addPersonaContext(
+        addLongTermMemoryContext(
+          buildChatCompletionPayload(messages, config, parameterEnabled),
+          memoryResults,
+          memorySettings?.max_injected_chars ?? 0
+        ),
+        persona
       )
       sendStreamRequest(
         String(generation),
@@ -477,6 +486,7 @@ export function useChatHandler({
       handleWebSearchStatus,
       parameterEnabled,
       memorySettings?.max_injected_chars,
+      persona,
       sendStreamRequest,
     ]
   )
@@ -493,10 +503,13 @@ export function useChatHandler({
 
       const abortController = new AbortController()
       request.abortController = abortController
-      const payload = addLongTermMemoryContext(
-        buildChatCompletionPayload(messages, config, parameterEnabled),
-        memoryResults,
-        memorySettings?.max_injected_chars ?? 0
+      const payload = addPersonaContext(
+        addLongTermMemoryContext(
+          buildChatCompletionPayload(messages, config, parameterEnabled),
+          memoryResults,
+          memorySettings?.max_injected_chars ?? 0
+        ),
+        persona
       )
 
       try {
@@ -558,6 +571,7 @@ export function useChatHandler({
       onMessageUpdate,
       parameterEnabled,
       memorySettings?.max_injected_chars,
+      persona,
       removeGeneration,
     ]
   )
@@ -582,7 +596,8 @@ export function useChatHandler({
             (config.webSearch ? 4_000 : 0) +
               (memorySettings?.enabled
                 ? Math.ceil((memorySettings.max_injected_chars ?? 0) / 4)
-                : 0)
+                : 0) +
+              (persona && persona.id > 0 ? 1_000 : 0)
           )
         ) {
           const compaction = planContextCompaction(
@@ -655,6 +670,7 @@ export function useChatHandler({
             memoryResults = await searchUserMemories(
               query,
               config.group,
+              personaId ?? persona?.id ?? 0,
               abortController.signal
             )
           } catch {
@@ -695,6 +711,8 @@ export function useChatHandler({
       memorySettings,
       onMessageUpdate,
       parameterEnabled.max_tokens,
+      persona,
+      personaId,
       prepareGeneration,
       startNonStreamingChat,
       startStreamingChat,

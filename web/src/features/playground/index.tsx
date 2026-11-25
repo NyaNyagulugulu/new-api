@@ -39,6 +39,7 @@ import {
   useAiChatTitles,
   useLongTermMemoryReflection,
   useMemorySettings,
+  usePersonas,
   usePlaygroundConversation,
   usePlaygroundOptions,
   usePlaygroundState,
@@ -90,6 +91,7 @@ export function Playground(props: PlaygroundProps) {
     selectChat,
     renameChat,
     deleteChat,
+    selectPersona,
   } = usePlaygroundState(props.conversationId ?? null)
   const handleMemoryUsage = useCallback(
     (sessionId: string, messageKey: string, usage: MessageUsage) => {
@@ -103,6 +105,11 @@ export function Playground(props: PlaygroundProps) {
   )
   const { models: pricingModels } = usePricingData()
   const memorySettings = useMemorySettings()
+  const { data: personas = [] } = usePersonas()
+  const activePersonaId = activeSession?.personaId ?? config.personaId ?? 0
+  const activePersona = personas.find(
+    (persona) => persona.id === activePersonaId
+  )
 
   const { sendChat, stopGeneration, generatingSessionIds } = useChatHandler({
     config,
@@ -111,6 +118,8 @@ export function Playground(props: PlaygroundProps) {
     )?.context_length,
     memorySettings,
     parameterEnabled,
+    persona: activePersona,
+    personaId: activePersonaId,
     onMessageUpdate: updateMessages,
   })
 
@@ -150,6 +159,12 @@ export function Playground(props: PlaygroundProps) {
     renameChat,
     sessions,
   })
+
+  useEffect(() => {
+    if (personas.length === 0 || activePersonaId === 0) return
+    if (personas.some((persona) => persona.id === activePersonaId)) return
+    selectPersona(0)
+  }, [activePersonaId, personas, selectPersona])
 
   useEffect(() => {
     if (props.conversationId || isLoadingMessages) return
@@ -390,9 +405,12 @@ export function Playground(props: PlaygroundProps) {
             onReasoningEffortChange={(value) =>
               updateConfig('reasoningEffort', value)
             }
+            onPersonaChange={selectPersona}
             onStop={handleStopGeneration}
             onSubmit={handleSendWithSound}
             parameterEnabled={parameterEnabled}
+            personaId={activePersonaId}
+            personas={personas}
           />
           <p className='text-muted-foreground pb-1 text-center text-[11px] leading-4'>
             {t('AI can make mistakes. Check important information.')}

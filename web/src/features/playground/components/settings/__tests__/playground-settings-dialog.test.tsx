@@ -28,12 +28,14 @@ import { PlaygroundSettingsDialog } from '../playground-settings-dialog'
 const apiMocks = vi.hoisted(() => ({
   deleteAllUserMemories: vi.fn(),
   deleteUserMemory: vi.fn(),
+  getUserPersonas: vi.fn(),
   getUserMemoryList: vi.fn(),
 }))
 
 vi.mock('../../../api', () => ({
   deleteAllUserMemories: apiMocks.deleteAllUserMemories,
   deleteUserMemory: apiMocks.deleteUserMemory,
+  getUserPersonas: apiMocks.getUserPersonas,
   getUserMemoryList: apiMocks.getUserMemoryList,
 }))
 
@@ -44,6 +46,7 @@ const memories: UserMemory[] = [
     keywords: 'style,answers',
     category: 'preference',
     importance: 0.8,
+    persona_id: 0,
     conversation_id: 'chat-1',
     source_key: 'source-1',
     status: 'active',
@@ -82,6 +85,16 @@ beforeAll(() => {
 
 beforeEach(() => {
   apiMocks.getUserMemoryList.mockResolvedValue(memories)
+  apiMocks.getUserPersonas.mockResolvedValue([
+    {
+      id: 0,
+      name: '',
+      traits: '',
+      is_default: true,
+      created_at: 0,
+      updated_at: 0,
+    },
+  ])
   apiMocks.deleteUserMemory.mockResolvedValue(undefined)
   apiMocks.deleteAllUserMemories.mockResolvedValue(1)
 })
@@ -98,8 +111,10 @@ function renderDialog() {
 }
 
 test('lists saved memories with their category, importance, and updated time', async () => {
+  const user = userEvent.setup()
   renderDialog()
 
+  await user.click(screen.getByRole('tab', { name: 'Memory management' }))
   expect(await screen.findByText('Prefers concise answers.')).toBeVisible()
   expect(screen.getByText('preference')).toBeVisible()
   expect(screen.getByText(/Importance: 80%/)).toBeVisible()
@@ -110,6 +125,7 @@ test('allows deleting one memory after confirmation', async () => {
   const user = userEvent.setup()
   renderDialog()
 
+  await user.click(screen.getByRole('tab', { name: 'Memory management' }))
   await user.click(await screen.findByRole('button', { name: 'Delete memory' }))
   await user.click(screen.getByRole('button', { name: 'Delete' }))
 
@@ -120,6 +136,7 @@ test('allows clearing every memory after confirmation', async () => {
   const user = userEvent.setup()
   renderDialog()
 
+  await user.click(screen.getByRole('tab', { name: 'Memory management' }))
   await user.click(
     await screen.findByRole('button', { name: 'Clear all memories' })
   )

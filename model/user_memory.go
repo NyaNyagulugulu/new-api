@@ -33,6 +33,7 @@ type UserMemory struct {
 	Keywords       string  `json:"keywords" gorm:"type:text;not null"`
 	Category       string  `json:"category" gorm:"type:varchar(32);not null;default:''"`
 	Importance     float64 `json:"importance" gorm:"not null;default:0"`
+	PersonaId      int64   `json:"persona_id" gorm:"not null;default:0;index:idx_user_memories_user_persona"`
 	ConversationId string  `json:"conversation_id" gorm:"type:varchar(64);not null;default:''"`
 	SourceKey      string  `json:"source_key" gorm:"type:varchar(128);not null;default:''"`
 	Status         string  `json:"status" gorm:"type:varchar(16);not null;index:idx_user_memories_user_updated,priority:2"`
@@ -46,6 +47,7 @@ type UserMemoryInput struct {
 	Keywords       []string  `json:"keywords"`
 	Category       string    `json:"category"`
 	Importance     float64   `json:"importance"`
+	PersonaId      int64     `json:"persona_id"`
 	ConversationId string    `json:"conversation_id"`
 	SourceKey      string    `json:"source_key"`
 	Embedding      []float64 `json:"embedding"`
@@ -54,6 +56,7 @@ type UserMemoryInput struct {
 type UserMemorySearchOptions struct {
 	Query         string
 	Embedding     []float64
+	PersonaId     int64
 	Limit         int
 	MinImportance float64
 	RetentionDays int
@@ -61,8 +64,12 @@ type UserMemorySearchOptions struct {
 	VectorWeight  float64
 }
 
-func hashUserMemoryContent(content string) string {
-	sum := sha256.Sum256([]byte(strings.ToLower(strings.Join(strings.Fields(content), " "))))
+func hashUserMemoryContent(personaId int64, content string) string {
+	normalized := strings.ToLower(strings.Join(strings.Fields(content), " "))
+	if personaId > 0 {
+		normalized = fmt.Sprintf("%d:%s", personaId, normalized)
+	}
+	sum := sha256.Sum256([]byte(normalized))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -97,6 +104,9 @@ func ValidateUserMemoryInput(input *UserMemoryInput) error {
 	}
 	if math.IsNaN(input.Importance) || math.IsInf(input.Importance, 0) {
 		return fmt.Errorf("invalid memory importance")
+	}
+	if input.PersonaId < 0 {
+		return fmt.Errorf("invalid memory persona")
 	}
 	input.Importance = min(max(input.Importance, 0), 1)
 	if len(normalizeMemoryKeywords(input.Keywords)) > MaxUserMemoryKeywords {
@@ -146,7 +156,10 @@ func SaveUserMemories(ctx context.Context, userId int, inputs []UserMemoryInput)
 			if err := ValidateUserMemoryInput(&input); err != nil {
 				return err
 			}
-			hash := hashUserMemoryContent(input.Content)
+			if err := ensureUserPersonaOwned(tx, userId, input.PersonaId); err != nil {
+				return err
+			}
+			hash := hashUserMemoryContent(input.PersonaId, input.Content)
 			embedding := encodeMemoryEmbedding(input.Embedding)
 			var existing UserMemory
 			err := lockForUpdate(tx).
@@ -158,6 +171,7 @@ func SaveUserMemories(ctx context.Context, userId int, inputs []UserMemoryInput)
 					"importance":      max(existing.Importance, input.Importance),
 					"keywords":        normalizeMemoryKeywords(append(splitMemoryKeywords(existing.Keywords), input.Keywords...)),
 					"category":        input.Category,
+					"persona_id":      input.PersonaId,
 					"conversation_id": input.ConversationId,
 					"source_key":      input.SourceKey,
 					"status":          UserMemoryStatusActive,
@@ -179,6 +193,7 @@ func SaveUserMemories(ctx context.Context, userId int, inputs []UserMemoryInput)
 					Keywords:       normalizeMemoryKeywords(input.Keywords),
 					Category:       input.Category,
 					Importance:     input.Importance,
+					PersonaId:      input.PersonaId,
 					ConversationId: input.ConversationId,
 					SourceKey:      input.SourceKey,
 					Status:         UserMemoryStatusActive,
@@ -337,8 +352,8 @@ func SearchUserMemories(ctx context.Context, userId int, options UserMemorySearc
 	cutoff := now - int64(max(options.RetentionDays, 1))*86_400_000
 	memories := make([]UserMemory, 0)
 	err := DB.WithContext(ctx).
-		Where("user_id = ? AND status = ? AND importance >= ? AND updated_at >= ?",
-			userId, UserMemoryStatusActive, max(options.MinImportance, 0), cutoff).
+		Where("user_id = ? AND persona_id = ? AND status = ? AND importance >= ? AND updated_at >= ?",
+			userId, max(options.PersonaId, 0), UserMemoryStatusActive, max(options.MinImportance, 0), cutoff).
 		Order("updated_at DESC").
 		Limit(500).
 		Find(&memories).Error

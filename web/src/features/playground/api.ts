@@ -37,6 +37,7 @@ import type {
   MemorySettings,
   UserMemory,
   UserMemoryInput,
+  UserPersona,
   WebSearchSource,
   WebSearchStatus,
 } from './types'
@@ -137,6 +138,7 @@ export async function getUserGroups(): Promise<GroupOption[]> {
 type ServerChatSession = {
   id: string
   title: string
+  persona_id?: number
   messages: unknown
   created_at: number
   updated_at: number
@@ -159,6 +161,10 @@ function parseChatSessions(value: unknown): ChatSession[] {
       {
         id: row.id,
         title: row.title,
+        personaId:
+          typeof row.persona_id === 'number' && row.persona_id >= 0
+            ? row.persona_id
+            : 0,
         messages: row.messages,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
@@ -187,6 +193,7 @@ export async function syncChatConversations(
     sessions: sessions.map((session) => ({
       id: session.id,
       title: session.title,
+      persona_id: session.personaId,
       messages: session.messages,
       created_at: session.createdAt,
       updated_at: session.updatedAt,
@@ -211,6 +218,7 @@ export async function getMemorySettings(): Promise<MemorySettings> {
 export async function searchUserMemories(
   query: string,
   group: string,
+  personaId: number,
   signal?: AbortSignal
 ): Promise<UserMemory[]> {
   const res = await api.post(
@@ -218,6 +226,7 @@ export async function searchUserMemories(
     {
       query,
       group,
+      persona_id: personaId,
     },
     {
       signal,
@@ -232,6 +241,45 @@ export async function saveUserMemories(
   group: string
 ): Promise<void> {
   const res = await api.post(API_ENDPOINTS.MEMORIES, { memories, group })
+  requireServerSuccess(res.data)
+}
+
+export async function getUserPersonas(): Promise<UserPersona[]> {
+  const res = await api.get(API_ENDPOINTS.PERSONAS)
+  const data = requireServerSuccess(res.data)
+  const personas = Array.isArray(data.data) ? (data.data as UserPersona[]) : []
+  return [
+    {
+      id: 0,
+      name: '',
+      traits: '',
+      is_default: true,
+      created_at: 0,
+      updated_at: 0,
+    },
+    ...personas.map((persona) => ({ ...persona, is_default: false })),
+  ]
+}
+
+export async function createUserPersona(input: {
+  name: string
+  traits: string
+}): Promise<UserPersona> {
+  const res = await api.post(API_ENDPOINTS.PERSONAS, input)
+  const data = requireServerSuccess(res.data)
+  return { ...(data.data as UserPersona), is_default: false }
+}
+
+export async function updateUserPersona(
+  id: number,
+  input: { name: string; traits: string }
+): Promise<void> {
+  const res = await api.put(`${API_ENDPOINTS.PERSONAS}/${id}`, input)
+  requireServerSuccess(res.data)
+}
+
+export async function deleteUserPersona(id: number): Promise<void> {
+  const res = await api.delete(`${API_ENDPOINTS.PERSONAS}/${id}`)
   requireServerSuccess(res.data)
 }
 

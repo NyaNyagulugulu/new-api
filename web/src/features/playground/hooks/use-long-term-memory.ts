@@ -119,7 +119,10 @@ export function useLongTermMemoryReflection({
         windowMessages,
         session.id,
         sourceKey
-      )
+      ).map((memory) => ({
+        ...memory,
+        persona_id: session.personaId,
+      }))
       void sendChatCompletion({
         model: config.model,
         group: config.group,
@@ -137,6 +140,7 @@ export function useLongTermMemoryReflection({
           const memories = [...extractedMemories, ...explicitMemories].map(
             (memory) => ({
               ...memory,
+              persona_id: session.personaId,
               conversation_id: session.id,
               source_key: sourceKey,
             })

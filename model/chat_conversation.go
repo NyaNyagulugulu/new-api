@@ -28,6 +28,7 @@ type ChatConversation struct {
 	Id        string          `json:"id" gorm:"primaryKey;type:varchar(64)"`
 	UserId    int             `json:"-" gorm:"not null;index:idx_chat_conversations_user_updated,priority:1"`
 	Title     string          `json:"title" gorm:"type:varchar(200);not null;default:''"`
+	PersonaId int64           `json:"persona_id" gorm:"not null;default:0;index:idx_chat_conversations_user_persona"`
 	Messages  json.RawMessage `json:"messages" gorm:"type:json;not null"`
 	CreatedAt int64           `json:"created_at" gorm:"type:bigint;not null;default:0"`
 	UpdatedAt int64           `json:"updated_at" gorm:"type:bigint;not null;default:0;index:idx_chat_conversations_user_updated,priority:2"`
@@ -40,6 +41,7 @@ func (ChatConversation) TableName() string {
 type ChatConversationInput struct {
 	Id        string          `json:"id"`
 	Title     string          `json:"title"`
+	PersonaId int64           `json:"persona_id"`
 	Messages  json.RawMessage `json:"messages"`
 	CreatedAt int64           `json:"created_at"`
 	UpdatedAt int64           `json:"updated_at"`
@@ -53,6 +55,9 @@ func ValidateChatConversationInput(input *ChatConversationInput) error {
 	}
 	if len(input.Title) > MaxChatConversationTitle {
 		return fmt.Errorf("chat conversation title is too long")
+	}
+	if input.PersonaId < 0 {
+		return fmt.Errorf("invalid chat conversation persona")
 	}
 	if len(input.Messages) == 0 {
 		return fmt.Errorf("invalid chat conversation messages")
@@ -108,6 +113,9 @@ func SyncChatConversations(
 			err := lockForUpdate(tx).Where("id = ?", input.Id).First(&existing).Error
 			switch {
 			case errors.Is(err, gorm.ErrRecordNotFound):
+				if err := ensureUserPersonaOwned(tx, userId, input.PersonaId); err != nil {
+					return err
+				}
 				now := time.Now().UnixMilli()
 				createdAt := input.CreatedAt
 				if createdAt <= 0 {
@@ -121,6 +129,7 @@ func SyncChatConversations(
 					Id:        input.Id,
 					UserId:    userId,
 					Title:     input.Title,
+					PersonaId: input.PersonaId,
 					Messages:  input.Messages,
 					CreatedAt: createdAt,
 					UpdatedAt: updatedAt,
@@ -132,6 +141,9 @@ func SyncChatConversations(
 			case existing.UserId != userId:
 				return ErrChatConversationForbidden
 			default:
+				if err := ensureUserPersonaOwned(tx, userId, input.PersonaId); err != nil {
+					return err
+				}
 				if input.UpdatedAt < existing.UpdatedAt {
 					continue
 				}
@@ -141,6 +153,7 @@ func SyncChatConversations(
 				}
 				updates := map[string]any{
 					"title":      title,
+					"persona_id": input.PersonaId,
 					"messages":   input.Messages,
 					"updated_at": input.UpdatedAt,
 				}

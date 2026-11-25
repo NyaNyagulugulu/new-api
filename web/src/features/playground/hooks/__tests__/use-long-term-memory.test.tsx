@@ -57,6 +57,7 @@ function createSession(answer: string, key: string): ChatSession {
   return {
     id: 'chat-1',
     title: 'Chat',
+    personaId: 9,
     createdAt: 1,
     updatedAt: 2,
     messages: [
@@ -79,6 +80,7 @@ function createEmptySession(): ChatSession {
   return {
     id: 'chat-1',
     title: 'Chat',
+    personaId: 0,
     createdAt: 1,
     updatedAt: 1,
     messages: [],
@@ -118,6 +120,7 @@ test('extracts and saves memories after the configured number of replies', async
     [
       expect.objectContaining({
         content: 'The user prefers concise answers.',
+        persona_id: 9,
         conversation_id: 'chat-1',
         source_key: 'chat-1:one-assistant',
       }),

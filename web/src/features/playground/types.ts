@@ -107,6 +107,7 @@ export interface Message {
 export interface ChatSession {
   id: string
   title: string
+  personaId: number
   messages: Message[]
   createdAt: number
   updatedAt: number
@@ -171,6 +172,7 @@ export interface UserMemory {
   keywords: string
   category: string
   importance: number
+  persona_id: number
   conversation_id: string
   source_key: string
   status: string
@@ -183,6 +185,7 @@ export interface UserMemoryInput {
   keywords: string[]
   category: string
   importance: number
+  persona_id: number
   conversation_id: string
   source_key: string
   embedding?: number[]
@@ -263,6 +266,16 @@ export interface PlaygroundConfig {
   stream: boolean
   reasoningEffort: ReasoningEffort
   webSearch: boolean
+  personaId: number
+}
+
+export interface UserPersona {
+  id: number
+  name: string
+  traits: string
+  is_default: boolean
+  created_at: number
+  updated_at: number
 }
 
 export interface ParameterEnabled {

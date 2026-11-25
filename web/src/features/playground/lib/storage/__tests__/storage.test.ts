@@ -48,6 +48,7 @@ const sessions: ChatSession[] = [
   {
     id: 'session-a',
     title: 'Account A chat',
+    personaId: 0,
     messages,
     createdAt: 100,
     updatedAt: 200,

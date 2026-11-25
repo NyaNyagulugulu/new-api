@@ -28,6 +28,7 @@ import { EmptyState } from '@/components/empty-state'
 import { ErrorState } from '@/components/error-state'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import dayjs from '@/lib/dayjs'
 
 import {
@@ -35,7 +36,9 @@ import {
   deleteUserMemory,
   getUserMemoryList,
 } from '../../api'
+import { usePersonas } from '../../hooks/use-personas'
 import type { UserMemory } from '../../types'
+import { PersonaSettingsPanel } from './persona-settings-panel'
 
 const MEMORY_QUERY_KEY = ['playground', 'long-term-memories'] as const
 
@@ -47,6 +50,7 @@ type PlaygroundSettingsDialogProps = {
 export function PlaygroundSettingsDialog(props: PlaygroundSettingsDialogProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const { data: personas = [] } = usePersonas()
   const [deleteTarget, setDeleteTarget] = useState<UserMemory | null>(null)
   const [clearAllOpen, setClearAllOpen] = useState(false)
   const memoriesQuery = useQuery({
@@ -72,6 +76,7 @@ export function PlaygroundSettingsDialog(props: PlaygroundSettingsDialogProps) {
   })
 
   const memories = memoriesQuery.data ?? []
+  const personasById = new Map(personas.map((persona) => [persona.id, persona]))
   const isMutating = deleteMutation.isPending || clearAllMutation.isPending
   let memoryList: React.ReactNode
   if (memoriesQuery.isPending) {
@@ -129,6 +134,13 @@ export function PlaygroundSettingsDialog(props: PlaygroundSettingsDialogProps) {
                 </span>
               ) : null}
               <span>
+                {t('Persona')}:{' '}
+                {memory.persona_id === 0
+                  ? t('Default persona')
+                  : (personasById.get(memory.persona_id)?.name ??
+                    t('Unknown persona'))}
+              </span>
+              <span>
                 {t('Importance')}: {Math.round(memory.importance * 100)}%
               </span>
               <span>
@@ -147,9 +159,7 @@ export function PlaygroundSettingsDialog(props: PlaygroundSettingsDialogProps) {
       <Dialog
         contentClassName='sm:max-w-3xl'
         contentHeight='clamp(22rem, 65vh, 42rem)'
-        description={t(
-          'Manage how WebChat remembers useful details from your conversations.'
-        )}
+        description={t('Manage WebChat personas and long-term memory.')}
         onOpenChange={(open) => {
           if (!open) {
             setDeleteTarget(null)
@@ -160,38 +170,51 @@ export function PlaygroundSettingsDialog(props: PlaygroundSettingsDialogProps) {
         open={props.open}
         title={t('Settings')}
       >
-        <section className='space-y-4'>
-          <div className='flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-start sm:justify-between'>
-            <div className='flex min-w-0 gap-3'>
-              <div className='bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg'>
-                <BrainIcon className='size-4' aria-hidden='true' />
+        <Tabs className='gap-4' defaultValue='personas'>
+          <TabsList className='grid w-full grid-cols-2'>
+            <TabsTrigger value='personas'>{t('Persona settings')}</TabsTrigger>
+            <TabsTrigger value='memory'>{t('Memory management')}</TabsTrigger>
+          </TabsList>
+          <TabsContent value='personas'>
+            <PersonaSettingsPanel />
+          </TabsContent>
+          <TabsContent value='memory'>
+            <section className='space-y-4'>
+              <div className='flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-start sm:justify-between'>
+                <div className='flex min-w-0 gap-3'>
+                  <div className='bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg'>
+                    <BrainIcon className='size-4' aria-hidden='true' />
+                  </div>
+                  <div className='min-w-0'>
+                    <h2 className='text-sm font-semibold'>
+                      {t('Memory management')}
+                    </h2>
+                    <p className='text-muted-foreground mt-1 text-xs leading-5'>
+                      {t(
+                        'WebChat can remember useful details from your conversations. Review what is stored or clear it at any time.'
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  disabled={
+                    memoriesQuery.isPending ||
+                    memories.length === 0 ||
+                    isMutating
+                  }
+                  onClick={() => setClearAllOpen(true)}
+                  type='button'
+                  variant='destructive'
+                >
+                  {clearAllMutation.isPending ? <Spinner /> : <Trash2Icon />}
+                  {t('Clear all memories')}
+                </Button>
               </div>
-              <div className='min-w-0'>
-                <h2 className='text-sm font-semibold'>
-                  {t('Memory management')}
-                </h2>
-                <p className='text-muted-foreground mt-1 text-xs leading-5'>
-                  {t(
-                    'WebChat can remember useful details from your conversations. Review what is stored or clear it at any time.'
-                  )}
-                </p>
-              </div>
-            </div>
-            <Button
-              disabled={
-                memoriesQuery.isPending || memories.length === 0 || isMutating
-              }
-              onClick={() => setClearAllOpen(true)}
-              type='button'
-              variant='destructive'
-            >
-              {clearAllMutation.isPending ? <Spinner /> : <Trash2Icon />}
-              {t('Clear all memories')}
-            </Button>
-          </div>
 
-          {memoryList}
-        </section>
+              {memoryList}
+            </section>
+          </TabsContent>
+        </Tabs>
       </Dialog>
 
       <ConfirmDialog
