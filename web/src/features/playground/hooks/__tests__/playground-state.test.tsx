@@ -155,6 +155,57 @@ test('changing a persona updates the active conversation persona', async () => {
   ).toBe(7)
 })
 
+test('imports conversations into the selected persona ordered by latest message', async () => {
+  const { result } = renderHook(() => usePlaygroundState())
+  await waitFor(() => expect(result.current.isLoadingMessages).toBe(false))
+
+  let newestId = ''
+  act(() => {
+    newestId =
+      result.current.importConversations(
+        [
+          {
+            id: 'imported-older',
+            title: 'Older conversation',
+            messages: [
+              {
+                key: 'older-message',
+                from: 'user',
+                versions: [{ id: 'older-version', content: 'Older message' }],
+              },
+            ],
+            createdAt: 1_000,
+            updatedAt: 2_000,
+          },
+          {
+            id: 'imported-newer',
+            title: 'Newer conversation',
+            messages: [
+              {
+                key: 'newer-message',
+                from: 'user',
+                versions: [{ id: 'newer-version', content: 'Newest message' }],
+              },
+            ],
+            createdAt: 3_000,
+            updatedAt: 4_000,
+          },
+        ],
+        7
+      ) ?? ''
+  })
+
+  expect(result.current.sessions.map((session) => session.id)).toEqual([
+    'imported-newer',
+    'imported-older',
+  ])
+  expect(result.current.sessions.map((session) => session.personaId)).toEqual([
+    7, 7,
+  ])
+  expect(newestId).toBe('imported-newer')
+  expect(result.current.activeSession?.id).toBe('imported-newer')
+})
+
 function usePlaygroundHarness(contextWindowTokens?: number) {
   const state = usePlaygroundState()
   const chat = useChatHandler({

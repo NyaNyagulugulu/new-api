@@ -25,6 +25,7 @@ import { Playground } from '../index'
 
 const mocks = vi.hoisted(() => ({
   back: vi.fn(),
+  importConversations: vi.fn(),
   navigate: vi.fn(),
   selectChat: vi.fn(),
   stopGeneration: vi.fn(),
@@ -68,6 +69,24 @@ vi.mock('@/features/playground/components/input/playground-input', () => ({
     <div data-disabled={String(Boolean(disabled))} data-testid='chat-input' />
   ),
 }))
+
+vi.mock(
+  '@/features/playground/components/history/playground-import-dialog',
+  () => ({
+    PlaygroundImportDialog: ({
+      open,
+      onOpenChange,
+    }: {
+      open: boolean
+      onOpenChange: (open: boolean) => void
+    }) =>
+      open ? (
+        <button onClick={() => onOpenChange(false)} type='button'>
+          Close import dialog
+        </button>
+      ) : null,
+  })
+)
 
 vi.mock('../hooks', () => ({
   useAiChatTitles: vi.fn(),
@@ -124,6 +143,7 @@ vi.mock('../hooks', () => ({
     selectChat: mocks.selectChat,
     renameChat: vi.fn(),
     deleteChat: vi.fn(),
+    importConversations: mocks.importConversations,
   }),
 }))
 
@@ -157,4 +177,15 @@ test('switching conversations while generating keeps the active stream running',
     'data-disabled',
     'false'
   )
+})
+
+test('opens the conversation import dialog from the web chat header', async () => {
+  const user = userEvent.setup()
+  render(<Playground />)
+
+  await user.click(screen.getByRole('button', { name: 'Import conversations' }))
+
+  expect(
+    screen.getByRole('button', { name: 'Close import dialog' })
+  ).toBeVisible()
 })

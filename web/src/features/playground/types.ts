@@ -113,6 +113,21 @@ export interface ChatSession {
   updatedAt: number
 }
 
+export interface ImportedChatSession {
+  id: string
+  title: string
+  messages: Message[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ChatImportResult {
+  sessions: ImportedChatSession[]
+  found: number
+  imported: number
+  skipped: number
+}
+
 // API payload types
 export interface ChatCompletionMessage {
   role: MessageRole

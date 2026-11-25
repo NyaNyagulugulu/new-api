@@ -30,6 +30,7 @@ import {
 import { sanitizeMessagesOnLoad } from './lib/message/message-streaming-utils'
 import { chatSessionsSchema } from './lib/storage/storage-schema'
 import type {
+  ChatImportResult,
   ChatSession,
   ChatCompletionRequest,
   ChatCompletionResponse,
@@ -210,6 +211,25 @@ export async function deleteChatConversation(id: string): Promise<void> {
     `${API_ENDPOINTS.CHAT_CONVERSATIONS}/${encodeURIComponent(id)}`
   )
   requireServerSuccess(res.data)
+}
+
+export async function importChatConversations(
+  source: { file?: File; url?: string },
+  signal?: AbortSignal
+): Promise<ChatImportResult> {
+  const form = new FormData()
+  if (source.file) {
+    form.append('file', source.file)
+  }
+  if (source.url) {
+    form.append('url', source.url)
+  }
+  const res = await api.post(API_ENDPOINTS.CHAT_CONVERSATIONS_IMPORT, form, {
+    signal,
+    timeout: 10 * 60 * 1000,
+  })
+  const data = requireServerSuccess(res.data)
+  return data.data as ChatImportResult
 }
 
 export async function getMemorySettings(): Promise<MemorySettings> {

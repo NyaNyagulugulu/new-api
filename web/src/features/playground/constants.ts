@@ -43,6 +43,7 @@ export const API_ENDPOINTS = {
   USER_GROUPS: '/api/user/self/groups',
   CHAT_CONVERSATIONS: '/api/user/self/chat_conversations',
   CHAT_CONVERSATIONS_SYNC: '/api/user/self/chat_conversations/sync',
+  CHAT_CONVERSATIONS_IMPORT: '/api/user/self/chat_conversations/import',
   MEMORY_SETTINGS: '/api/user/self/memory_settings',
   PERSONAS: '/api/user/self/personas',
   MEMORIES: '/api/user/self/memories',

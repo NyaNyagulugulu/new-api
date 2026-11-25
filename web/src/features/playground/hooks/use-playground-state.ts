@@ -41,8 +41,10 @@ import {
   saveParameterEnabled,
   type MessageStateUpdater,
 } from '../lib'
+import { MAX_STORED_SESSIONS } from '../lib/storage/storage-schema'
 import type {
   ChatSession,
+  ImportedChatSession,
   Message,
   PlaygroundConfig,
   ParameterEnabled,
@@ -444,6 +446,42 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
     [createNewChat]
   )
 
+  const importConversations = useCallback(
+    (importedSessions: ImportedChatSession[], personaId: number) => {
+      if (importedSessions.length === 0) return null
+
+      const merged = new Map(
+        sessionsRef.current.map((session) => [session.id, session])
+      )
+      let newestImported: ChatSession | null = null
+      for (const imported of importedSessions) {
+        const existing = merged.get(imported.id)
+        const session: ChatSession = {
+          ...imported,
+          personaId: existing?.personaId ?? personaId,
+        }
+        merged.set(session.id, session)
+        if (!newestImported || session.updatedAt > newestImported.updatedAt) {
+          newestImported = session
+        }
+      }
+
+      const ordered = [...merged.values()]
+        .sort(
+          (left, right) =>
+            right.updatedAt - left.updatedAt || left.id.localeCompare(right.id)
+        )
+        .slice(0, MAX_STORED_SESSIONS)
+      sessionsRef.current = ordered
+      setSessions(ordered)
+      if (newestImported) {
+        setActiveSessionId(newestImported.id)
+      }
+      return newestImported?.id ?? null
+    },
+    [setActiveSessionId]
+  )
+
   const resetConfig = useCallback(() => {
     setConfig(DEFAULT_CONFIG)
     setParameterEnabled(DEFAULT_PARAMETER_ENABLED)
@@ -473,6 +511,7 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
     selectChat,
     renameChat,
     deleteChat,
+    importConversations,
     selectPersona,
     resetConfig,
   }

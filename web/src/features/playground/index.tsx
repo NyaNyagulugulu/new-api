@@ -17,7 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useNavigate, useRouter } from '@tanstack/react-router'
-import { ArrowLeftIcon, PanelLeftIcon, SquarePenIcon } from 'lucide-react'
+import {
+  ArrowLeftIcon,
+  PanelLeftIcon,
+  SquarePenIcon,
+  UploadIcon,
+} from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -33,6 +38,7 @@ import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
 
 import { PlaygroundChat } from './components/chat/playground-chat'
 import { PlaygroundHistorySidebar } from './components/history/playground-history-sidebar'
+import { PlaygroundImportDialog } from './components/history/playground-import-dialog'
 import { PlaygroundInput } from './components/input/playground-input'
 import {
   useChatHandler,
@@ -50,7 +56,12 @@ import {
   mergeMessageUsageByKey,
   type CompletionSoundPlayer,
 } from './lib'
-import type { Message, MessageAttachment, MessageUsage } from './types'
+import type {
+  ChatImportResult,
+  Message,
+  MessageAttachment,
+  MessageUsage,
+} from './types'
 
 type PlaygroundProps = {
   conversationId?: string
@@ -61,6 +72,7 @@ export function Playground(props: PlaygroundProps) {
   const navigate = useNavigate()
   const router = useRouter()
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [unreadSessionIds, setUnreadSessionIds] = useState<ReadonlySet<string>>(
     () => new Set()
   )
@@ -91,6 +103,7 @@ export function Playground(props: PlaygroundProps) {
     selectChat,
     renameChat,
     deleteChat,
+    importConversations,
     selectPersona,
   } = usePlaygroundState(props.conversationId ?? null)
   const handleMemoryUsage = useCallback(
@@ -255,6 +268,15 @@ export function Playground(props: PlaygroundProps) {
     })
   }
 
+  const handleImported = (result: ChatImportResult) => {
+    const sessionId = importConversations(result.sessions, activePersonaId)
+    if (!sessionId) return
+    void navigate({
+      to: '/c/$conversationId',
+      params: { conversationId: sessionId },
+    })
+  }
+
   const handleSendWithSound = (
     text: string,
     attachments?: MessageAttachment[]
@@ -359,6 +381,19 @@ export function Playground(props: PlaygroundProps) {
           </h1>
 
           <Button
+            aria-label={t('Import conversations')}
+            onClick={() => setImportOpen(true)}
+            size='sm'
+            type='button'
+            variant='outline'
+          >
+            <UploadIcon />
+            <span className='hidden sm:inline'>
+              {t('Import conversations')}
+            </span>
+          </Button>
+
+          <Button
             aria-label={t('New chat')}
             className='lg:hidden'
             onClick={handleNewChat}
@@ -418,6 +453,12 @@ export function Playground(props: PlaygroundProps) {
           </p>
         </div>
       </section>
+
+      <PlaygroundImportDialog
+        onImported={handleImported}
+        onOpenChange={setImportOpen}
+        open={importOpen}
+      />
     </div>
   )
 }
