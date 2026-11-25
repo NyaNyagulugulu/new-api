@@ -105,6 +105,17 @@ test('stream updates target an existing background session', async () => {
   )
 })
 
+test('opens a conversation from its permalink session id', async () => {
+  const conversationId = '6b062a5d-40e4-83e8-a783-5a6675934b43'
+  const { result } = renderHook(() => usePlaygroundState(conversationId))
+  await waitFor(() => expect(result.current.isLoadingMessages).toBe(false))
+
+  expect(result.current.activeSession?.id).toBe(conversationId)
+  expect(result.current.sessions.map((session) => session.id)).toContain(
+    conversationId
+  )
+})
+
 function usePlaygroundHarness(contextWindowTokens?: number) {
   const state = usePlaygroundState()
   const chat = useChatHandler({

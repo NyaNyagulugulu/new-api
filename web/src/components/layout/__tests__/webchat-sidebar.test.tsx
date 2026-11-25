@@ -89,6 +89,17 @@ test('web chat hides the outer app sidebar and its header trigger', () => {
   )
 })
 
+test('conversation permalinks use the same focused web chat layout', () => {
+  mocks.pathname = '/c/6b062a5d-40e4-83e8-a783-5a6675934b43'
+  render(<AuthenticatedLayout />)
+
+  expect(screen.queryByTestId('app-sidebar')).not.toBeInTheDocument()
+  expect(screen.getByRole('banner')).toHaveAttribute(
+    'data-sidebar-trigger',
+    'false'
+  )
+})
+
 test('other authenticated routes keep the app sidebar and trigger', () => {
   mocks.pathname = '/dashboard'
   render(<AuthenticatedLayout />)

@@ -94,7 +94,8 @@ export function usePlaygroundConversation({
       updateMessages(editResult.messages)
 
       if (editResult.shouldSend) {
-        sendChat(editResult.messages, ensureActiveSessionId())
+        const sessionId = ensureActiveSessionId()
+        sendChat(editResult.messages, sessionId)
       }
     },
     [

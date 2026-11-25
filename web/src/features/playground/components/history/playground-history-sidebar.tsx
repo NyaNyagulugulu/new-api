@@ -22,6 +22,7 @@ import {
   Loader2Icon,
   PencilIcon,
   SearchIcon,
+  SettingsIcon,
   SquarePenIcon,
   Trash2Icon,
 } from 'lucide-react'
@@ -48,6 +49,7 @@ import {
   type ChatSessionDateGroup,
 } from '../../lib'
 import type { ChatSession } from '../../types'
+import { PlaygroundSettingsDialog } from '../settings/playground-settings-dialog'
 
 type PlaygroundHistorySidebarProps = {
   sessions: ChatSession[]
@@ -75,6 +77,7 @@ export function PlaygroundHistorySidebar(props: PlaygroundHistorySidebarProps) {
   const [renameTarget, setRenameTarget] = useState<ChatSession | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<ChatSession | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const fallbackTitle = t('New chat')
   const filteredSessions = useMemo(() => {
@@ -246,6 +249,23 @@ export function PlaygroundHistorySidebar(props: PlaygroundHistorySidebarProps) {
           </div>
         )}
       </div>
+
+      <div className='border-t p-3'>
+        <Button
+          className='h-9 w-full justify-start rounded-lg px-2.5 text-sm font-normal'
+          onClick={() => setSettingsOpen(true)}
+          type='button'
+          variant='ghost'
+        >
+          <SettingsIcon />
+          <span>{t('Settings')}</span>
+        </Button>
+      </div>
+
+      <PlaygroundSettingsDialog
+        onOpenChange={setSettingsOpen}
+        open={settingsOpen}
+      />
 
       <Dialog
         footer={

@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { nanoid } from 'nanoid'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { handleServerError } from '@/lib/handle-server-error'
@@ -29,6 +28,7 @@ import {
 import { DEFAULT_CONFIG, DEFAULT_PARAMETER_ENABLED } from '../constants'
 import {
   applyMessageStateUpdate,
+  createChatSessionId,
   createChatSession,
   getInitialParameterEnabled,
   getInitialPlaygroundConfig,
@@ -58,7 +58,7 @@ type SyncedSessionState = Pick<ChatSession, 'title' | 'updatedAt'>
 /**
  * Main state management hook for the web chat.
  */
-export function usePlaygroundState() {
+export function usePlaygroundState(initialSessionId: string | null = null) {
   const [config, setConfig] = useState<PlaygroundConfig>(
     getInitialPlaygroundConfig
   )
@@ -74,6 +74,7 @@ export function usePlaygroundState() {
   const [groups, setGroups] = useState<GroupOption[]>([])
 
   const activeSessionIdRef = useRef<string | null>(null)
+  const initialSessionIdRef = useRef(initialSessionId)
   const sessionsRef = useRef<ChatSession[]>([])
   const hasLoadedSessionsRef = useRef(false)
   const saveTimerRef = useRef<number | null>(null)
@@ -81,6 +82,7 @@ export function usePlaygroundState() {
   const lastSyncedSessionsRef = useRef<Map<string, SyncedSessionState>>(
     new Map()
   )
+  initialSessionIdRef.current = initialSessionId
 
   const setActiveSessionId = useCallback((sessionId: string | null) => {
     activeSessionIdRef.current = sessionId
@@ -90,6 +92,7 @@ export function usePlaygroundState() {
   const syncPendingSessions = useCallback(() => {
     const currentSessions = sessionsRef.current
     const changedSessions = currentSessions.filter((session) => {
+      if (session.messages.length === 0) return false
       const previous = lastSyncedSessionsRef.current.get(session.id)
       return (
         !previous ||
@@ -143,13 +146,23 @@ export function usePlaygroundState() {
       }
       if (cancelled) return
 
-      const loadedSessions = mergeChatSessions(localSessions, serverSessions)
+      let loadedSessions = mergeChatSessions(localSessions, serverSessions)
+      const requestedSessionId = initialSessionIdRef.current
+      if (
+        requestedSessionId &&
+        !loadedSessions.some((session) => session.id === requestedSessionId)
+      ) {
+        loadedSessions = [
+          createChatSession([], Date.now(), requestedSessionId),
+          ...loadedSessions,
+        ]
+      }
       const storedActiveSessionId = loadActiveChatSessionId()
-      const nextActiveSessionId = loadedSessions.some(
-        (session) => session.id === storedActiveSessionId
-      )
-        ? storedActiveSessionId
-        : (loadedSessions[0]?.id ?? null)
+      const nextActiveSessionId =
+        requestedSessionId ??
+        (loadedSessions.some((session) => session.id === storedActiveSessionId)
+          ? storedActiveSessionId
+          : (loadedSessions[0]?.id ?? null))
 
       lastSyncedSessionsRef.current = new Map(
         serverSessions.map((session) => [
@@ -169,6 +182,19 @@ export function usePlaygroundState() {
       cancelled = true
     }
   }, [setActiveSessionId])
+
+  useEffect(() => {
+    if (!initialSessionId || !hasLoadedSessionsRef.current) return
+    setSessions((previousSessions) =>
+      previousSessions.some((session) => session.id === initialSessionId)
+        ? previousSessions
+        : [
+            createChatSession([], Date.now(), initialSessionId),
+            ...previousSessions,
+          ]
+    )
+    setActiveSessionId(initialSessionId)
+  }, [initialSessionId, setActiveSessionId])
 
   useEffect(() => {
     sessionsRef.current = sessions
@@ -233,7 +259,7 @@ export function usePlaygroundState() {
   const updateMessages = useCallback(
     (updater: MessageStateUpdater, sessionId?: string) => {
       const currentSessionId = sessionId ?? activeSessionIdRef.current
-      const targetSessionId = currentSessionId ?? nanoid()
+      const targetSessionId = currentSessionId ?? createChatSessionId()
 
       if (!currentSessionId) {
         setActiveSessionId(targetSessionId)
@@ -298,7 +324,7 @@ export function usePlaygroundState() {
     const currentSessionId = activeSessionIdRef.current
     if (currentSessionId) return currentSessionId
 
-    const sessionId = nanoid()
+    const sessionId = createChatSessionId()
     setActiveSessionId(sessionId)
     setSessions((previousSessions) => [
       createChatSession([], Date.now(), sessionId),

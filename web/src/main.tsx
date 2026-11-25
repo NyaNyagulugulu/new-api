@@ -72,11 +72,29 @@ if (!rootElement) {
   try {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
     const apply = (name: string) => {
-      document.title = name
-      const metaTitle = document.querySelector(
-        'meta[name="title"]'
-      ) as HTMLMetaElement | null
-      if (metaTitle) metaTitle.setAttribute('content', name)
+      const title = `${name} · New API | 统一 AI API 网关与智能对话平台`
+      document.title = title
+      for (const selector of [
+        'meta[name="title"]',
+        'meta[property="og:title"]',
+        'meta[name="twitter:title"]',
+        'meta[property="og:site_name"]',
+      ]) {
+        const meta = document.querySelector(selector) as HTMLMetaElement | null
+        if (meta) {
+          meta.setAttribute(
+            'content',
+            selector.includes('og:site_name') ? name : title
+          )
+        }
+      }
+      for (const selector of [
+        'meta[name="application-name"]',
+        'meta[name="apple-mobile-web-app-title"]',
+      ]) {
+        const meta = document.querySelector(selector) as HTMLMetaElement | null
+        if (meta) meta.setAttribute('content', name)
+      }
     }
     // Cache-first
     const cached = readCachedStatus()

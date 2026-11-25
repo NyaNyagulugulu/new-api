@@ -39,7 +39,10 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
   const defaultOpen = getCookie('sidebar_state') !== 'false'
   const pathname = useLocation({ select: (location) => location.pathname })
   const isWebChat =
-    pathname === '/playground' || pathname.startsWith('/playground/')
+    pathname === '/playground' ||
+    pathname.startsWith('/playground/') ||
+    pathname === '/c' ||
+    pathname.startsWith('/c/')
   const signedIn = useAuthStore((s) => !!s.auth.user)
   // Unmount pages on sign-out, otherwise their queries refetch and toast "Session expired!" / "invalid access token"
   if (!signedIn) return null

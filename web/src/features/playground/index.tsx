@@ -51,7 +51,11 @@ import {
 } from './lib'
 import type { Message, MessageAttachment, MessageUsage } from './types'
 
-export function Playground() {
+type PlaygroundProps = {
+  conversationId?: string
+}
+
+export function Playground(props: PlaygroundProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const router = useRouter()
@@ -86,7 +90,7 @@ export function Playground() {
     selectChat,
     renameChat,
     deleteChat,
-  } = usePlaygroundState()
+  } = usePlaygroundState(props.conversationId ?? null)
   const handleMemoryUsage = useCallback(
     (sessionId: string, messageKey: string, usage: MessageUsage) => {
       updateMessages(
@@ -147,6 +151,23 @@ export function Playground() {
     sessions,
   })
 
+  useEffect(() => {
+    if (props.conversationId || isLoadingMessages) return
+
+    const sessionId = activeSession?.id ?? ensureActiveSessionId()
+    void navigate({
+      to: '/c/$conversationId',
+      params: { conversationId: sessionId },
+      replace: true,
+    })
+  }, [
+    activeSession?.id,
+    ensureActiveSessionId,
+    isLoadingMessages,
+    navigate,
+    props.conversationId,
+  ])
+
   useEffect(
     () => () => {
       completionSoundRef.current?.dispose()
@@ -194,7 +215,14 @@ export function Playground() {
   }
 
   const handleNewChat = () => {
-    closeEditorAndRun(createNewChat)
+    closeEditorAndRun(() => {
+      createNewChat()
+      const sessionId = ensureActiveSessionId()
+      void navigate({
+        to: '/c/$conversationId',
+        params: { conversationId: sessionId },
+      })
+    })
   }
 
   const handleSelectChat = (sessionId: string) => {
@@ -205,6 +233,10 @@ export function Playground() {
       return next
     })
     closeEditorAndRun(() => selectChat(sessionId))
+    void navigate({
+      to: '/c/$conversationId',
+      params: { conversationId: sessionId },
+    })
   }
 
   const handleSendWithSound = (

@@ -110,6 +110,14 @@ func testUserMemoryDatabaseMatrix(t *testing.T) {
 				Importance: 0.8,
 			}}))
 
+			listed, err := ListUserMemories(context.Background(), 1)
+			require.NoError(t, err)
+			require.Len(t, listed, 2)
+			assert.ElementsMatch(t, []string{
+				"The user prefers PostgreSQL for new services.",
+				"The user is planning a dashboard redesign.",
+			}, []string{listed[0].Content, listed[1].Content})
+
 			memories, err := SearchUserMemories(context.Background(), 1, UserMemorySearchOptions{
 				Query:         "database",
 				Limit:         5,
@@ -169,6 +177,15 @@ func testUserMemoryDatabaseMatrix(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, vectorMatches, 1)
 			assert.Contains(t, vectorMatches[0].Content, "PostgreSQL")
+
+			deleted, err := DeleteAllUserMemories(context.Background(), 1)
+			require.NoError(t, err)
+			assert.Equal(t, int64(2), deleted)
+			listed, err = ListUserMemories(context.Background(), 1)
+			require.NoError(t, err)
+			assert.Empty(t, listed)
+			require.NoError(t, db.Model(&UserMemory{}).Where("user_id = ?", 2).Count(&count).Error)
+			assert.Equal(t, int64(1), count)
 		})
 	}
 }

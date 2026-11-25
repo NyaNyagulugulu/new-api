@@ -60,10 +60,20 @@ export function getChatSessionTitle(
     : fallbackTitle
 }
 
+export function createChatSessionId(): string {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
+    return crypto.randomUUID()
+  }
+  return nanoid()
+}
+
 export function createChatSession(
   messages: Message[] = [],
   timestamp = Date.now(),
-  id = nanoid()
+  id = createChatSessionId()
 ): ChatSession {
   return {
     id,
@@ -111,7 +121,10 @@ export function groupChatSessionsByDate(
     ['older', []],
   ])
 
-  for (const session of sessions) {
+  const newestFirst = [...sessions].sort(
+    (left, right) => right.updatedAt - left.updatedAt
+  )
+  for (const session of newestFirst) {
     grouped.get(getSessionDateGroup(session, now))?.push(session)
   }
 

@@ -394,6 +394,18 @@ func SearchUserMemories(ctx context.Context, userId int, options UserMemorySearc
 	return memories, nil
 }
 
+func ListUserMemories(ctx context.Context, userId int) ([]UserMemory, error) {
+	if userId <= 0 {
+		return nil, fmt.Errorf("invalid user")
+	}
+	memories := make([]UserMemory, 0)
+	err := DB.WithContext(ctx).
+		Where("user_id = ? AND status = ?", userId, UserMemoryStatusActive).
+		Order("updated_at DESC").
+		Find(&memories).Error
+	return memories, err
+}
+
 func DeleteUserMemory(ctx context.Context, userId int, id int64) error {
 	if userId <= 0 || id <= 0 {
 		return fmt.Errorf("invalid memory")
@@ -401,4 +413,14 @@ func DeleteUserMemory(ctx context.Context, userId int, id int64) error {
 	return DB.WithContext(ctx).
 		Where("id = ? AND user_id = ?", id, userId).
 		Delete(&UserMemory{}).Error
+}
+
+func DeleteAllUserMemories(ctx context.Context, userId int) (int64, error) {
+	if userId <= 0 {
+		return 0, fmt.Errorf("invalid user")
+	}
+	result := DB.WithContext(ctx).
+		Where("user_id = ?", userId).
+		Delete(&UserMemory{})
+	return result.RowsAffected, result.Error
 }

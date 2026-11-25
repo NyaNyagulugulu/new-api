@@ -234,3 +234,21 @@ export async function saveUserMemories(
   const res = await api.post(API_ENDPOINTS.MEMORIES, { memories, group })
   requireServerSuccess(res.data)
 }
+
+export async function getUserMemoryList(): Promise<UserMemory[]> {
+  const res = await api.get(`${API_ENDPOINTS.MEMORIES}/manage`)
+  const data = requireServerSuccess(res.data)
+  return Array.isArray(data.data) ? (data.data as UserMemory[]) : []
+}
+
+export async function deleteUserMemory(id: number): Promise<void> {
+  const res = await api.delete(`${API_ENDPOINTS.MEMORIES}/${id}`)
+  requireServerSuccess(res.data)
+}
+
+export async function deleteAllUserMemories(): Promise<number> {
+  const res = await api.delete(API_ENDPOINTS.MEMORIES)
+  const data = requireServerSuccess(res.data)
+  const deleted = data.data as { deleted?: unknown } | null
+  return typeof deleted?.deleted === 'number' ? deleted.deleted : 0
+}

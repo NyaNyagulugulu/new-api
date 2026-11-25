@@ -1,19 +1,17 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
     <meta name="google" content="notranslate" />
+    <meta name="format-detection" content="telephone=no" />
 
-    <!-- Primary Meta Tags -->
-    <title>New API</title>
-    <meta name="title" content="New API" />
-    <meta
-      name="description"
-      content="Unified AI API gateway and admin dashboard."
-    />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/nekoai-logo.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
 
-    <meta name="theme-color" content="#fff" />
     <!-- Resolve the theme before first paint so the page never flashes light
          and one-shot detectors (e.g. Dark Reader) see the real theme.
          Keep in sync with ThemeProvider and THEME_STORAGE_KEYS.mode. -->
@@ -31,11 +29,198 @@
         document.documentElement.classList.add(theme)
       })()
     </script>
+
+    <!-- Primary SEO -->
+    <title>NekoAI · New API | 统一 AI API 网关与智能对话平台</title>
+    <meta
+      name="description"
+      content="NekoAI 是面向开发者与创作者的统一 AI API 网关与智能对话平台，兼容 OpenAI API，聚合多种主流模型，提供模型调用、WebChat、用量统计与统一管理。"
+    />
+    <meta
+      name="keywords"
+      content="NekoAI, New API, AI API, API 网关, OpenAI API, Claude, Gemini, 大模型 API, AI 对话, WebChat, ai.nekocore.cn"
+    />
+    <meta name="author" content="NekoAI · New API" />
+    <meta name="application-name" content="NekoAI" />
+    <meta name="apple-mobile-web-app-title" content="NekoAI" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="copyright" content="NekoAI · New API © 2025–2026" />
+    <meta
+      name="robots"
+      content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+    />
+    <meta name="revisit-after" content="7 days" />
+    <meta name="theme-color" content="#04060f" />
+    <link rel="canonical" href="https://ai.nekocore.cn/" />
+    <link rel="alternate" hreflang="zh-CN" href="https://ai.nekocore.cn/" />
+    <link rel="alternate" hreflang="x-default" href="https://ai.nekocore.cn/" />
+    <link
+      rel="sitemap"
+      type="application/xml"
+      title="Sitemap"
+      href="/sitemap.xml"
+    />
+
+    <!-- Language and region -->
+    <meta name="language" content="zh-CN" />
+    <meta name="geo.region" content="CN" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://ai.nekocore.cn/" />
+    <meta
+      property="og:title"
+      content="NekoAI · New API | 统一 AI API 网关与智能对话平台"
+    />
+    <meta
+      property="og:description"
+      content="连接主流 AI 模型，为开发者与创作者提供稳定、清晰、易接入的 API 与 WebChat 体验。"
+    />
+    <meta
+      property="og:image"
+      content="https://ai.nekocore.cn/og-image.png"
+    />
+    <meta
+      property="og:image:secure_url"
+      content="https://ai.nekocore.cn/og-image.png"
+    />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="NekoAI：统一 AI API 网关与智能对话平台"
+    />
+    <meta property="og:site_name" content="NekoAI" />
+    <meta property="og:locale" content="zh_CN" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://ai.nekocore.cn/" />
+    <meta
+      name="twitter:title"
+      content="NekoAI · New API | 统一 AI API 网关与智能对话平台"
+    />
+    <meta
+      name="twitter:description"
+      content="连接主流 AI 模型，为开发者与创作者提供稳定、清晰、易接入的 API 与 WebChat 体验。"
+    />
+    <meta
+      name="twitter:image"
+      content="https://ai.nekocore.cn/og-image.png"
+    />
+    <meta
+      name="twitter:image:alt"
+      content="NekoAI：统一 AI API 网关与智能对话平台"
+    />
+    <meta name="twitter:site" content="@maomaoServer" />
+    <meta name="twitter:creator" content="@maomaoServer" />
+
+    <!-- ICP -->
+    <meta name="icp" content="黔ICP备2026007098号" />
+
+    <!-- DNS prefetch -->
+    <link rel="dns-prefetch" href="//github.com" />
+    <link rel="dns-prefetch" href="//x.com" />
+
+    <!-- Structured data -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://ai.nekocore.cn/#organization",
+            "name": "NekoAI",
+            "alternateName": ["New API", "NekoCore AI"],
+            "url": "https://ai.nekocore.cn/",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://ai.nekocore.cn/nekoai-logo.png",
+              "width": 512,
+              "height": 512
+            },
+            "image": "https://ai.nekocore.cn/og-image.png",
+            "description": "面向开发者与创作者的统一 AI API 网关与智能对话平台。",
+            "address": {
+              "@type": "PostalAddress",
+              "addressCountry": "CN"
+            }
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://ai.nekocore.cn/#website",
+            "url": "https://ai.nekocore.cn/",
+            "name": "NekoAI",
+            "alternateName": "New API",
+            "description": "统一 AI API 网关与智能对话平台。",
+            "publisher": {
+              "@id": "https://ai.nekocore.cn/#organization"
+            },
+            "inLanguage": "zh-CN"
+          },
+          {
+            "@type": "WebPage",
+            "@id": "https://ai.nekocore.cn/#webpage",
+            "url": "https://ai.nekocore.cn/",
+            "name": "NekoAI · New API | 统一 AI API 网关与智能对话平台",
+            "description": "连接主流 AI 模型，为开发者与创作者提供稳定、清晰、易接入的 API 与 WebChat 体验。",
+            "isPartOf": {
+              "@id": "https://ai.nekocore.cn/#website"
+            },
+            "about": {
+              "@id": "https://ai.nekocore.cn/#organization"
+            },
+            "primaryImageOfPage": {
+              "@type": "ImageObject",
+              "url": "https://ai.nekocore.cn/og-image.png",
+              "width": 1200,
+              "height": 630
+            },
+            "breadcrumb": {
+              "@id": "https://ai.nekocore.cn/#breadcrumb"
+            },
+            "inLanguage": "zh-CN"
+          },
+          {
+            "@type": "BreadcrumbList",
+            "@id": "https://ai.nekocore.cn/#breadcrumb",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "首页",
+                "item": "https://ai.nekocore.cn/"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
     <!--umami-->
     <!--Google Analytics-->
   </head>
 
   <body>
+    <noscript>
+      <div
+        style="
+          padding: 24px;
+          text-align: center;
+          font-family: sans-serif;
+          background: #04060f;
+          color: #f8fafc;
+        "
+      >
+        <h1>NekoAI · New API</h1>
+        <p>统一 AI API 网关与智能对话平台</p>
+        <p>此网站需要启用 JavaScript 才能正常运行，请启用后刷新页面。</p>
+      </div>
+    </noscript>
     <div id="root" translate="no" class="notranslate"></div>
   </body>
 </html>

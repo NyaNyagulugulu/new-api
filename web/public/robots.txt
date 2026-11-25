@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /v1/
+Disallow: /c/
+Disallow: /dashboard/
+Disallow: /keys
+Disallow: /usage-logs/
+Disallow: /system-settings/
+
+Sitemap: https://ai.nekocore.cn/sitemap.xml

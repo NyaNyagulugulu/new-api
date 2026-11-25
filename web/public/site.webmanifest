@@ -1,0 +1,22 @@
+{
+  "name": "NekoAI · New API",
+  "short_name": "NekoAI",
+  "description": "统一 AI API 网关与智能对话平台",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#04060f",
+  "theme_color": "#04060f",
+  "icons": [
+    {
+      "src": "/nekoai-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    }
+  ]
+}

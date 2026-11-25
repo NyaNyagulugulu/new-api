@@ -24,6 +24,11 @@ import { beforeAll, expect, test, vi } from 'vitest'
 import type { ChatSession } from '../../../types'
 import { PlaygroundHistorySidebar } from '../playground-history-sidebar'
 
+vi.mock('../../settings/playground-settings-dialog', () => ({
+  PlaygroundSettingsDialog: ({ open }: { open: boolean }) =>
+    open ? <div>Settings dialog</div> : null,
+}))
+
 const sessionMessage = (key: string, content: string) => ({
   key,
   from: 'user' as const,
@@ -69,6 +74,7 @@ beforeAll(() => {
     'Rename chat': 'Rename chat',
     Save: 'Save',
     'Search chats': 'Search chats',
+    Settings: 'Settings',
     Today: 'Today',
     'Try a different search term.': 'Try a different search term.',
     Unread: 'Unread',
@@ -127,6 +133,15 @@ test('starting or selecting a chat invokes the requested navigation', async () =
 
   expect(onNewChat).toHaveBeenCalledOnce()
   expect(onSelectChat).toHaveBeenCalledWith('chat-2')
+})
+
+test('opens settings from the bottom of the conversation sidebar', async () => {
+  const user = userEvent.setup()
+  renderSidebar()
+
+  await user.click(screen.getByRole('button', { name: 'Settings' }))
+
+  expect(screen.getByText('Settings dialog')).toBeInTheDocument()
 })
 
 test('renaming a conversation saves the new title', async () => {

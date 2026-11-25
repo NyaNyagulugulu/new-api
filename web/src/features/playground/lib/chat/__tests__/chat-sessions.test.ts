@@ -90,6 +90,24 @@ test('sessions are grouped by recency with the newest group first', () => {
   ])
 })
 
+test('sessions inside each date group are ordered by their latest message', () => {
+  const now = new Date(2026, 10, 23, 12).getTime()
+  const groups = groupChatSessionsByDate(
+    [
+      createSession('oldest', now - 3 * 60 * 60 * 1000),
+      createSession('newest', now - 60 * 60 * 1000),
+      createSession('middle', now - 2 * 60 * 60 * 1000),
+    ],
+    now
+  )
+
+  expect(groups[0].sessions.map((session) => session.id)).toEqual([
+    'newest',
+    'middle',
+    'oldest',
+  ])
+})
+
 test('server history wins while newer offline work is preserved', () => {
   const localNewer = createSession('local-newer', 300, 'Local newer')
   const localDeleted = createSession('local-deleted', 50, 'Old local copy')

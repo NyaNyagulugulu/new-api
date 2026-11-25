@@ -43,6 +43,20 @@ func GetUserMemories(c *gin.Context) {
 	common.ApiSuccess(c, memories)
 }
 
+func ListUserMemories(c *gin.Context) {
+	userId := c.GetInt("id")
+	if userId <= 0 {
+		common.ApiErrorMsg(c, "Invalid user")
+		return
+	}
+	memories, err := model.ListUserMemories(c.Request.Context(), userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, memories)
+}
+
 type searchUserMemoriesRequest struct {
 	Query string `json:"query"`
 	Group string `json:"group"`
@@ -162,4 +176,18 @@ func DeleteUserMemory(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, nil)
+}
+
+func DeleteAllUserMemories(c *gin.Context) {
+	userId := c.GetInt("id")
+	if userId <= 0 {
+		common.ApiErrorMsg(c, "Invalid user")
+		return
+	}
+	deleted, err := model.DeleteAllUserMemories(c.Request.Context(), userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"deleted": deleted})
 }

@@ -123,6 +123,16 @@ test('provides back navigation from the web chat header', async () => {
   expect(mocks.back).toHaveBeenCalledOnce()
 })
 
+test('opens the active conversation at its permalink', () => {
+  render(<Playground />)
+
+  expect(mocks.navigate).toHaveBeenCalledWith({
+    to: '/c/$conversationId',
+    params: { conversationId: 'chat-2' },
+    replace: true,
+  })
+})
+
 test('switching conversations while generating keeps the active stream running', async () => {
   const user = userEvent.setup()
   render(<Playground />)
