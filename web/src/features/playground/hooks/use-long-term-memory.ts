@@ -61,6 +61,7 @@ export function useLongTermMemoryReflection({
   const completedCountsRef = useRef<Map<string, number>>(new Map())
   const attemptedSourceKeysRef = useRef<ReadonlySet<string>>(new Set())
   const activeSessionsRef = useRef<ReadonlySet<string>>(new Set())
+  const initializedRef = useRef(false)
 
   useEffect(() => {
     if (!settings?.enabled || !settings.auto_extract) return
@@ -71,6 +72,11 @@ export function useLongTermMemoryReflection({
         session.id,
         session.messages.filter(isMemoryExtractionMessage).length
       )
+    }
+    if (!initializedRef.current) {
+      initializedRef.current = true
+      completedCountsRef.current = counts
+      return
     }
     for (const session of sessions) {
       if (activeSessionsRef.current.has(session.id)) continue

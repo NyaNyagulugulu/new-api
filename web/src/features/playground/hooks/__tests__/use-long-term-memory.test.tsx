@@ -125,3 +125,18 @@ test('extracts and saves memories after the configured number of replies', async
     'default'
   )
 })
+
+test('does not extract memories from conversation history loaded on open', () => {
+  apiMocks.sendChatCompletion.mockResolvedValue({ choices: [] })
+
+  renderHook(() =>
+    useLongTermMemoryReflection({
+      config: DEFAULT_CONFIG,
+      sessions: [createSession('Existing answer', 'existing')],
+      settings,
+    })
+  )
+
+  expect(apiMocks.sendChatCompletion).not.toHaveBeenCalled()
+  expect(apiMocks.saveUserMemories).not.toHaveBeenCalled()
+})

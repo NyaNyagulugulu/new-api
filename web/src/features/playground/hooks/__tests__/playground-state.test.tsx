@@ -116,6 +116,28 @@ test('opens a conversation from its permalink session id', async () => {
   )
 })
 
+test('renaming a conversation does not change its latest-message time', async () => {
+  apiMocks.getChatConversations.mockResolvedValue([
+    {
+      id: 'chat-1',
+      title: '',
+      messages: appendUserMessagePair([], 'Existing question'),
+      createdAt: 100,
+      updatedAt: 200,
+    },
+  ])
+  const { result } = renderHook(() => usePlaygroundState())
+  await waitFor(() => expect(result.current.isLoadingMessages).toBe(false))
+
+  act(() => result.current.renameChat('chat-1', 'Renamed chat'))
+
+  expect(result.current.sessions[0]).toMatchObject({
+    id: 'chat-1',
+    title: 'Renamed chat',
+    updatedAt: 200,
+  })
+})
+
 function usePlaygroundHarness(contextWindowTokens?: number) {
   const state = usePlaygroundState()
   const chat = useChatHandler({

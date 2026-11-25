@@ -108,6 +108,28 @@ test('sessions inside each date group are ordered by their latest message', () =
   ])
 })
 
+test('sessions with the same latest-message time keep a deterministic order', () => {
+  const now = new Date(2026, 10, 23, 12).getTime()
+
+  const first = groupChatSessionsByDate(
+    [createSession('beta', now), createSession('alpha', now)],
+    now
+  )
+  const second = groupChatSessionsByDate(
+    [createSession('alpha', now), createSession('beta', now)],
+    now
+  )
+
+  expect(first[0].sessions.map((session) => session.id)).toEqual([
+    'alpha',
+    'beta',
+  ])
+  expect(second[0].sessions.map((session) => session.id)).toEqual([
+    'alpha',
+    'beta',
+  ])
+})
+
 test('server history wins while newer offline work is preserved', () => {
   const localNewer = createSession('local-newer', 300, 'Local newer')
   const localDeleted = createSession('local-deleted', 50, 'Old local copy')

@@ -361,7 +361,6 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
           ? {
               ...session,
               title: nextTitle,
-              updatedAt: Math.max(Date.now(), session.updatedAt + 1),
             }
           : session
       )

@@ -110,6 +110,10 @@ function getSessionDateGroup(
   return 'older'
 }
 
+function compareChatSessionsByRecency(left: ChatSession, right: ChatSession) {
+  return right.updatedAt - left.updatedAt || left.id.localeCompare(right.id)
+}
+
 export function groupChatSessionsByDate(
   sessions: ChatSession[],
   now = Date.now()
@@ -121,9 +125,7 @@ export function groupChatSessionsByDate(
     ['older', []],
   ])
 
-  const newestFirst = [...sessions].sort(
-    (left, right) => right.updatedAt - left.updatedAt
-  )
+  const newestFirst = [...sessions].sort(compareChatSessionsByRecency)
   for (const session of newestFirst) {
     grouped.get(getSessionDateGroup(session, now))?.push(session)
   }
@@ -166,7 +168,5 @@ export function mergeChatSessions(
     }
   }
 
-  return [...merged.values()].sort(
-    (left, right) => right.updatedAt - left.updatedAt
-  )
+  return [...merged.values()].sort(compareChatSessionsByRecency)
 }
