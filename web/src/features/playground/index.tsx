@@ -90,7 +90,10 @@ export function Playground(props: PlaygroundProps) {
     messages,
     activeSession,
     sessions,
+    visibleSessions,
     isLoadingMessages,
+    hasMoreSessions,
+    isLoadingMoreSessions,
     models,
     groups,
     updateMessages,
@@ -101,6 +104,7 @@ export function Playground(props: PlaygroundProps) {
     updateParameterEnabled,
     createNewChat,
     selectChat,
+    loadMoreSessions,
     renameChat,
     deleteChat,
     importConversations,
@@ -305,6 +309,7 @@ export function Playground(props: PlaygroundProps) {
   const isCurrentSessionGenerating = Boolean(
     activeSession?.id && generatingSessionIds.has(activeSession.id)
   )
+  const isActiveSessionReady = activeSession?.messagesLoaded !== false
 
   const handleBack = () => {
     if (router.history.canGoBack()) {
@@ -320,6 +325,8 @@ export function Playground(props: PlaygroundProps) {
       activeSessionId={activeSession?.id ?? null}
       className={className}
       generatingSessionIds={generatingSessionIds}
+      hasMore={hasMoreSessions}
+      isLoadingMore={isLoadingMoreSessions}
       onDeleteChat={(sessionId) => {
         if (generatingSessionIds.has(sessionId)) {
           suppressedCompletionSessionsRef.current = new Set(
@@ -330,9 +337,10 @@ export function Playground(props: PlaygroundProps) {
         closeEditorAndRun(() => deleteChat(sessionId))
       }}
       onNewChat={handleNewChat}
+      onLoadMore={loadMoreSessions}
       onRenameChat={renameChat}
       onSelectChat={handleSelectChat}
-      sessions={sessions}
+      sessions={visibleSessions}
       unreadSessionIds={unreadSessionIds}
     />
   )
@@ -427,7 +435,11 @@ export function Playground(props: PlaygroundProps) {
         <div className='mx-auto w-full max-w-3xl px-2 pb-2 sm:px-4'>
           <PlaygroundInput
             config={config}
-            disabled={isCurrentSessionGenerating}
+            disabled={
+              isCurrentSessionGenerating ||
+              isLoadingMessages ||
+              !isActiveSessionReady
+            }
             groupValue={config.group}
             groups={groups}
             isGenerating={isCurrentSessionGenerating}

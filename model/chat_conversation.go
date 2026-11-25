@@ -15,6 +15,8 @@ import (
 
 const (
 	MaxChatConversationBatchSize = 50
+	DefaultChatConversationPage  = 30
+	MaxChatConversationPageSize  = 100
 	MaxChatConversationIDLen     = 64
 	MaxChatConversationTitle     = 200
 	MaxChatConversationBytes     = 32 << 20
@@ -49,6 +51,14 @@ type ChatConversationInput struct {
 	UpdatedAt int64           `json:"updated_at"`
 }
 
+type ChatConversationSummary struct {
+	Id            string `json:"id"`
+	Title         string `json:"title"`
+	PersonaId     int64  `json:"persona_id"`
+	StartedAt     int64  `json:"created_at" gorm:"column:created_at"`
+	LastMessageAt int64  `json:"updated_at" gorm:"column:updated_at"`
+}
+
 func ValidateChatConversationInput(input *ChatConversationInput) error {
 	input.Id = strings.TrimSpace(input.Id)
 	input.Title = strings.TrimSpace(input.Title)
@@ -74,14 +84,40 @@ func ValidateChatConversationInput(input *ChatConversationInput) error {
 	return nil
 }
 
-func ListChatConversations(ctx context.Context, userId int) ([]ChatConversation, error) {
-	conversations := make([]ChatConversation, 0)
+func ListChatConversations(
+	ctx context.Context,
+	userId int,
+	page int,
+	pageSize int,
+) ([]ChatConversationSummary, int64, error) {
+	base := DB.WithContext(ctx).
+		Model(&ChatConversation{}).
+		Where("user_id = ?", userId)
+
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	conversations := make([]ChatConversationSummary, 0, pageSize)
 	err := DB.WithContext(ctx).
+		Model(&ChatConversation{}).
 		Where("user_id = ?", userId).
+		Select("id, title, persona_id, created_at, updated_at").
 		Order("updated_at DESC").
 		Order("id ASC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
 		Find(&conversations).Error
-	return conversations, err
+	return conversations, total, err
+}
+
+func GetChatConversation(ctx context.Context, userId int, id string) (ChatConversation, error) {
+	var conversation ChatConversation
+	err := DB.WithContext(ctx).
+		Where("user_id = ? AND id = ?", userId, strings.TrimSpace(id)).
+		First(&conversation).Error
+	return conversation, err
 }
 
 func SyncChatConversations(

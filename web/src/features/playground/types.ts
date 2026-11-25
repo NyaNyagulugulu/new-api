@@ -109,6 +109,7 @@ export interface ChatSession {
   title: string
   personaId: number
   messages: Message[]
+  messagesLoaded?: boolean
   createdAt: number
   updatedAt: number
 }
@@ -126,6 +127,14 @@ export interface ChatImportResult {
   found: number
   imported: number
   skipped: number
+}
+
+export interface ChatConversationPage {
+  sessions: ChatSession[]
+  page: number
+  pageSize: number
+  total: number
+  hasMore: boolean
 }
 
 // API payload types

@@ -22,6 +22,7 @@ import { handleServerError } from '@/lib/handle-server-error'
 
 import {
   deleteChatConversation,
+  getChatConversation,
   getChatConversations,
   syncChatConversations,
 } from '../api'
@@ -44,6 +45,7 @@ import {
 } from '../lib'
 import type {
   ChatSession,
+  ChatConversationPage,
   ImportedChatSession,
   Message,
   PlaygroundConfig,
@@ -56,6 +58,7 @@ const SESSION_SAVE_DEBOUNCE_MS = 500
 const SERVER_SYNC_DEBOUNCE_MS = 1200
 const SERVER_SYNC_BATCH_SIZE = 50
 const SERVER_SYNC_BATCH_BYTES = 24 * 1024 * 1024
+const HISTORY_PAGE_SIZE = 30
 const EMPTY_MESSAGES: Message[] = []
 type SyncedSessionState = Pick<ChatSession, 'title' | 'updatedAt' | 'personaId'>
 
@@ -74,6 +77,10 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
     null
   )
   const [isLoadingMessages, setIsLoadingMessages] = useState(true)
+  const [hasMoreServerSessions, setHasMoreServerSessions] = useState(false)
+  const [isLoadingMoreSessions, setIsLoadingMoreSessions] = useState(false)
+  const [visibleSessionLimit, setVisibleSessionLimit] =
+    useState(HISTORY_PAGE_SIZE)
   const [models, setModels] = useState<ModelOption[]>([])
   const [groups, setGroups] = useState<GroupOption[]>([])
 
@@ -84,6 +91,8 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
   const hasLoadedSessionsRef = useRef(false)
   const saveTimerRef = useRef<number | null>(null)
   const serverSyncTimerRef = useRef<number | null>(null)
+  const nextHistoryPageRef = useRef(2)
+  const detailLoadRequestRef = useRef(0)
   const lastSyncedSessionsRef = useRef<Map<string, SyncedSessionState>>(
     new Map()
   )
@@ -94,9 +103,49 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
     setActiveSessionIdState(sessionId)
   }, [])
 
+  const applySessionDetail = useCallback((detail: ChatSession) => {
+    const existing = sessionsRef.current.some(
+      (session) => session.id === detail.id
+    )
+    const nextSessions = existing
+      ? sessionsRef.current.map((session) =>
+          session.id === detail.id ? detail : session
+        )
+      : [...sessionsRef.current, detail]
+    const sorted = nextSessions.sort(
+      (left, right) =>
+        getChatSessionRecencyTime(right) - getChatSessionRecencyTime(left) ||
+        left.id.localeCompare(right.id)
+    )
+    sessionsRef.current = sorted
+    setSessions(sorted)
+  }, [])
+
+  const loadSessionDetail = useCallback(
+    async (sessionId: string) => {
+      const requestId = ++detailLoadRequestRef.current
+      setIsLoadingMessages(true)
+      try {
+        const detail = await getChatConversation(sessionId)
+        if (requestId !== detailLoadRequestRef.current) return
+        applySessionDetail(detail)
+      } catch (error) {
+        if (requestId === detailLoadRequestRef.current) {
+          handleServerError(error)
+        }
+      } finally {
+        if (requestId === detailLoadRequestRef.current) {
+          setIsLoadingMessages(false)
+        }
+      }
+    },
+    [applySessionDetail]
+  )
+
   const syncPendingSessions = useCallback(() => {
     const currentSessions = sessionsRef.current
     const changedSessions = currentSessions.filter((session) => {
+      if (session.messagesLoaded === false) return false
       if (session.messages.length === 0) return false
       const previous = lastSyncedSessionsRef.current.get(session.id)
       return (
@@ -175,39 +224,83 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
     let cancelled = false
     const load = async () => {
       const localSessions = loadChatSessions()
-      let serverSessions: ChatSession[] = []
+      let serverPage: ChatConversationPage = {
+        sessions: [],
+        page: 1,
+        pageSize: HISTORY_PAGE_SIZE,
+        total: 0,
+        hasMore: false,
+      }
       try {
-        serverSessions = await getChatConversations()
+        serverPage = await getChatConversations(1, HISTORY_PAGE_SIZE)
       } catch {
         // Local storage remains the fallback while the server is unavailable.
       }
       if (cancelled) return
 
-      let loadedSessions = mergeChatSessions(localSessions, serverSessions)
+      let loadedSessions = mergeChatSessions(localSessions, serverPage.sessions)
       const requestedSessionId = initialSessionIdRef.current
-      if (
-        requestedSessionId &&
-        !loadedSessions.some((session) => session.id === requestedSessionId)
-      ) {
-        loadedSessions = [
-          createChatSession(
-            [],
-            Date.now(),
-            requestedSessionId,
-            personaIdRef.current
-          ),
-          ...loadedSessions,
-        ]
-      }
       const storedActiveSessionId = loadActiveChatSessionId()
-      const nextActiveSessionId =
+      let nextActiveSessionId =
         requestedSessionId ??
         (loadedSessions.some((session) => session.id === storedActiveSessionId)
           ? storedActiveSessionId
           : (loadedSessions[0]?.id ?? null))
+      const serverKnownSessions = [...serverPage.sessions]
 
+      const activeSession = loadedSessions.find(
+        (session) => session.id === nextActiveSessionId
+      )
+      if (
+        nextActiveSessionId &&
+        (!activeSession || activeSession.messagesLoaded === false)
+      ) {
+        try {
+          const detail = await getChatConversation(nextActiveSessionId)
+          if (cancelled) return
+          const existingIndex = loadedSessions.findIndex(
+            (session) => session.id === detail.id
+          )
+          loadedSessions =
+            existingIndex === -1
+              ? [detail, ...loadedSessions]
+              : loadedSessions.map((session) =>
+                  session.id === detail.id ? detail : session
+                )
+          const knownIndex = serverKnownSessions.findIndex(
+            (session) => session.id === detail.id
+          )
+          if (knownIndex === -1) {
+            serverKnownSessions.push(detail)
+          } else {
+            serverKnownSessions[knownIndex] = detail
+          }
+        } catch {
+          if (
+            requestedSessionId &&
+            !loadedSessions.some((session) => session.id === requestedSessionId)
+          ) {
+            loadedSessions = [
+              createChatSession(
+                [],
+                Date.now(),
+                requestedSessionId,
+                personaIdRef.current
+              ),
+              ...loadedSessions,
+            ]
+          }
+        }
+      }
+
+      if (cancelled) return
+      nextActiveSessionId = loadedSessions.some(
+        (session) => session.id === nextActiveSessionId
+      )
+        ? nextActiveSessionId
+        : (loadedSessions[0]?.id ?? null)
       lastSyncedSessionsRef.current = new Map(
-        serverSessions.map((session) => [
+        serverKnownSessions.map((session) => [
           session.id,
           {
             title: session.title,
@@ -220,6 +313,9 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
       hasLoadedSessionsRef.current = true
       setSessions(loadedSessions)
       setActiveSessionId(nextActiveSessionId)
+      nextHistoryPageRef.current = 2
+      setHasMoreServerSessions(serverPage.hasMore)
+      setVisibleSessionLimit(HISTORY_PAGE_SIZE)
       setIsLoadingMessages(false)
     }
     void load()
@@ -231,21 +327,14 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
 
   useEffect(() => {
     if (!initialSessionId || !hasLoadedSessionsRef.current) return
-    setSessions((previousSessions) =>
-      previousSessions.some((session) => session.id === initialSessionId)
-        ? previousSessions
-        : [
-            createChatSession(
-              [],
-              Date.now(),
-              initialSessionId,
-              personaIdRef.current
-            ),
-            ...previousSessions,
-          ]
+    const session = sessionsRef.current.find(
+      (item) => item.id === initialSessionId
     )
     setActiveSessionId(initialSessionId)
-  }, [initialSessionId, setActiveSessionId])
+    if (!session || session.messagesLoaded === false) {
+      void loadSessionDetail(initialSessionId)
+    }
+  }, [initialSessionId, loadSessionDetail, setActiveSessionId])
 
   useEffect(() => {
     sessionsRef.current = sessions
@@ -393,6 +482,8 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
   }, [setActiveSessionId])
 
   const createNewChat = useCallback(() => {
+    detailLoadRequestRef.current++
+    setIsLoadingMessages(false)
     const activeSession = sessionsRef.current.find(
       (session) => session.id === activeSessionIdRef.current
     )
@@ -407,7 +498,10 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
       return updated
     })
     setSessions((previousSessions) =>
-      previousSessions.filter((session) => session.messages.length > 0)
+      previousSessions.filter(
+        (session) =>
+          session.messagesLoaded === false || session.messages.length > 0
+      )
     )
     setActiveSessionId(null)
   }, [setActiveSessionId])
@@ -435,14 +529,75 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
 
   const selectChat = useCallback(
     (sessionId: string) => {
-      if (!sessionsRef.current.some((session) => session.id === sessionId)) {
+      const session = sessionsRef.current.find((item) => item.id === sessionId)
+      if (!session) {
         return
       }
 
+      detailLoadRequestRef.current++
       setActiveSessionId(sessionId)
+      if (session.messagesLoaded === false) {
+        void loadSessionDetail(sessionId)
+      } else {
+        setIsLoadingMessages(false)
+      }
     },
-    [setActiveSessionId]
+    [loadSessionDetail, setActiveSessionId]
   )
+
+  const loadMoreSessions = useCallback(async () => {
+    if (isLoadingMoreSessions) return
+    if (sessionsRef.current.length > visibleSessionLimit) {
+      setVisibleSessionLimit((limit) => limit + HISTORY_PAGE_SIZE)
+      return
+    }
+    if (!hasMoreServerSessions) return
+
+    setIsLoadingMoreSessions(true)
+    try {
+      const page = await getChatConversations(
+        nextHistoryPageRef.current,
+        HISTORY_PAGE_SIZE
+      )
+      const merged = new Map(
+        sessionsRef.current.map((session) => [session.id, session])
+      )
+      for (const summary of page.sessions) {
+        const existing = merged.get(summary.id)
+        if (!existing) {
+          merged.set(summary.id, summary)
+          continue
+        }
+        if (existing.messagesLoaded === false) {
+          merged.set(summary.id, {
+            ...summary,
+            createdAt: existing.createdAt,
+          })
+        }
+      }
+      const ordered = [...merged.values()].sort(
+        (left, right) =>
+          getChatSessionRecencyTime(right) - getChatSessionRecencyTime(left) ||
+          left.id.localeCompare(right.id)
+      )
+      sessionsRef.current = ordered
+      setSessions(ordered)
+      for (const summary of page.sessions) {
+        lastSyncedSessionsRef.current.set(summary.id, {
+          title: summary.title,
+          updatedAt: summary.updatedAt,
+          personaId: summary.personaId,
+        })
+      }
+      nextHistoryPageRef.current = page.page + 1
+      setHasMoreServerSessions(page.hasMore)
+      setVisibleSessionLimit((limit) => limit + HISTORY_PAGE_SIZE)
+    } catch (error) {
+      handleServerError(error)
+    } finally {
+      setIsLoadingMoreSessions(false)
+    }
+  }, [hasMoreServerSessions, isLoadingMoreSessions, visibleSessionLimit])
 
   const renameChat = useCallback((sessionId: string, title: string) => {
     const nextTitle = title.trim()
@@ -489,6 +644,7 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
         const session: ChatSession = {
           ...imported,
           personaId: existing?.personaId ?? personaId,
+          messagesLoaded: true,
         }
         merged.set(session.id, session)
         if (
@@ -524,6 +680,15 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
 
   const activeSession =
     sessions.find((session) => session.id === activeSessionId) ?? null
+  const visibleSessions = sessions.slice(0, visibleSessionLimit)
+  if (
+    activeSession &&
+    !visibleSessions.some((session) => session.id === activeSession.id)
+  ) {
+    visibleSessions.unshift(activeSession)
+  }
+  const hasMoreSessions =
+    visibleSessionLimit < sessions.length || hasMoreServerSessions
 
   return {
     config,
@@ -531,7 +696,10 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
     messages: activeSession?.messages ?? EMPTY_MESSAGES,
     activeSession,
     sessions,
+    visibleSessions,
     isLoadingMessages,
+    hasMoreSessions,
+    isLoadingMoreSessions,
     models,
     groups,
     setModels,
@@ -542,6 +710,7 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
     ensureActiveSessionId,
     createNewChat,
     selectChat,
+    loadMoreSessions,
     renameChat,
     deleteChat,
     importConversations,

@@ -57,11 +57,14 @@ type PlaygroundHistorySidebarProps = {
   disabled?: boolean
   generatingSessionIds?: ReadonlySet<string>
   unreadSessionIds?: ReadonlySet<string>
+  hasMore?: boolean
+  isLoadingMore?: boolean
   className?: string
   onNewChat: () => void
   onSelectChat: (sessionId: string) => void
   onRenameChat: (sessionId: string, title: string) => void
   onDeleteChat: (sessionId: string) => void
+  onLoadMore?: () => void
 }
 
 const GROUP_LABEL_KEYS: Record<ChatSessionDateGroup, string> = {
@@ -83,7 +86,8 @@ export function PlaygroundHistorySidebar(props: PlaygroundHistorySidebarProps) {
   const filteredSessions = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase()
     const visibleSessions = props.sessions.filter(
-      (session) => session.messages.length > 0
+      (session) =>
+        session.messagesLoaded === false || session.messages.length > 0
     )
     if (!query) return visibleSessions
 
@@ -254,6 +258,23 @@ export function PlaygroundHistorySidebar(props: PlaygroundHistorySidebarProps) {
             ))}
           </div>
         )}
+        {props.hasMore ? (
+          <div className='px-1 pt-3'>
+            <Button
+              className='w-full'
+              disabled={props.isLoadingMore}
+              onClick={props.onLoadMore}
+              size='sm'
+              type='button'
+              variant='outline'
+            >
+              {props.isLoadingMore ? (
+                <Loader2Icon className='animate-spin' />
+              ) : null}
+              {t('Load more')}
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <div className='border-t p-3'>

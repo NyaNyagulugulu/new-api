@@ -28,6 +28,7 @@ import { usePlaygroundState } from '../use-playground-state'
 
 const apiMocks = vi.hoisted(() => ({
   deleteChatConversation: vi.fn(),
+  getChatConversation: vi.fn(),
   getChatConversations: vi.fn(),
   sendChatCompletion: vi.fn(),
   syncChatConversations: vi.fn(),
@@ -35,6 +36,7 @@ const apiMocks = vi.hoisted(() => ({
 
 vi.mock('../../api', () => ({
   deleteChatConversation: apiMocks.deleteChatConversation,
+  getChatConversation: apiMocks.getChatConversation,
   getChatConversations: apiMocks.getChatConversations,
   sendChatCompletion: apiMocks.sendChatCompletion,
   syncChatConversations: apiMocks.syncChatConversations,
@@ -50,7 +52,16 @@ function deferred<T>() {
 
 beforeEach(() => {
   localStorage.clear()
-  apiMocks.getChatConversations.mockResolvedValue([])
+  apiMocks.getChatConversations.mockResolvedValue({
+    sessions: [],
+    page: 1,
+    pageSize: 30,
+    total: 0,
+    hasMore: false,
+  })
+  apiMocks.getChatConversation.mockRejectedValue(
+    new Error('Conversation not found')
+  )
   apiMocks.syncChatConversations.mockResolvedValue(undefined)
   apiMocks.deleteChatConversation.mockResolvedValue(undefined)
   useAuthStore.getState().auth.reset()

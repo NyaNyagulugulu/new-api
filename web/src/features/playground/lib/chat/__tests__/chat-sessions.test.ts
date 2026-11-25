@@ -193,3 +193,17 @@ test('server history wins while newer offline work is preserved', () => {
     'Server newer'
   )
 })
+
+test('cached messages win over an equal-age metadata-only summary', () => {
+  const cached = createSession('chat-1', 100, 'Cached')
+  const summary = {
+    ...cached,
+    messages: [],
+    messagesLoaded: false,
+  }
+
+  const merged = mergeChatSessions([cached], [summary])
+
+  expect(merged[0].messagesLoaded).not.toBe(false)
+  expect(merged[0].messages[0].key).toBe('message-1')
+})

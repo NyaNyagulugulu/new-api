@@ -66,6 +66,7 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/user/self":                            accessTokenScopeRule("profile:read"),
 	"GET /api/user/models":                          accessTokenScopeRule("profile:read"),
 	"GET /api/user/self/chat_conversations":         accessTokenScopeRule("profile:read"),
+	"GET /api/user/self/chat_conversations/:id":     accessTokenScopeRule("profile:read"),
 	"PUT /api/user/self/chat_conversations/sync":    accessTokenScopeRule("profile:write"),
 	"POST /api/user/self/chat_conversations/import": accessTokenScopeRule("profile:write"),
 	"DELETE /api/user/self/chat_conversations/:id":  accessTokenScopeRule("profile:write"),

@@ -117,16 +117,18 @@ func testChatConversationDatabaseMatrix(t *testing.T) {
 				[]ChatConversationInput{session},
 			))
 
-			rows, err := ListChatConversations(context.Background(), 1)
+			rows, _, err := ListChatConversations(context.Background(), 1, 1, MaxChatConversationPageSize)
 			require.NoError(t, err)
 			require.Len(t, rows, 1)
 			assert.Equal(t, "First chat", rows[0].Title)
 			assert.Equal(t, persona.Id, rows[0].PersonaId)
 			assert.Equal(t, int64(10), rows[0].StartedAt)
 			assert.Equal(t, int64(20), rows[0].LastMessageAt)
-			assert.JSONEq(t, string(messages), string(rows[0].Messages))
+			detail, err := GetChatConversation(context.Background(), 1, "chat-1")
+			require.NoError(t, err)
+			assert.JSONEq(t, string(messages), string(detail.Messages))
 
-			otherRows, err := ListChatConversations(context.Background(), 2)
+			otherRows, _, err := ListChatConversations(context.Background(), 2, 1, MaxChatConversationPageSize)
 			require.NoError(t, err)
 			assert.Empty(t, otherRows)
 
@@ -137,7 +139,7 @@ func testChatConversationDatabaseMatrix(t *testing.T) {
 				1,
 				[]ChatConversationInput{session},
 			))
-			rows, err = ListChatConversations(context.Background(), 1)
+			rows, _, err = ListChatConversations(context.Background(), 1, 1, MaxChatConversationPageSize)
 			require.NoError(t, err)
 			assert.Equal(t, "Updated chat", rows[0].Title)
 			assert.Equal(t, int64(30), rows[0].LastMessageAt)
@@ -150,7 +152,7 @@ func testChatConversationDatabaseMatrix(t *testing.T) {
 				1,
 				[]ChatConversationInput{staleSession},
 			))
-			rows, err = ListChatConversations(context.Background(), 1)
+			rows, _, err = ListChatConversations(context.Background(), 1, 1, MaxChatConversationPageSize)
 			require.NoError(t, err)
 			assert.Equal(t, "Updated chat", rows[0].Title)
 
@@ -163,11 +165,13 @@ func testChatConversationDatabaseMatrix(t *testing.T) {
 				1,
 				[]ChatConversationInput{newerWithoutTitle},
 			))
-			rows, err = ListChatConversations(context.Background(), 1)
+			rows, _, err = ListChatConversations(context.Background(), 1, 1, MaxChatConversationPageSize)
 			require.NoError(t, err)
 			assert.Equal(t, "Updated chat", rows[0].Title)
-			assert.JSONEq(t, string(newerWithoutTitle.Messages), string(rows[0].Messages))
 			assert.Equal(t, int64(40), rows[0].LastMessageAt)
+			detail, err = GetChatConversation(context.Background(), 1, "chat-1")
+			require.NoError(t, err)
+			assert.JSONEq(t, string(newerWithoutTitle.Messages), string(detail.Messages))
 
 			require.ErrorIs(t, SyncChatConversations(
 				context.Background(),
@@ -176,7 +180,7 @@ func testChatConversationDatabaseMatrix(t *testing.T) {
 			), ErrChatConversationForbidden)
 
 			require.NoError(t, DeleteChatConversation(context.Background(), 2, "chat-1"))
-			rows, err = ListChatConversations(context.Background(), 1)
+			rows, _, err = ListChatConversations(context.Background(), 1, 1, MaxChatConversationPageSize)
 			require.NoError(t, err)
 			require.Len(t, rows, 1)
 
@@ -191,13 +195,13 @@ func testChatConversationDatabaseMatrix(t *testing.T) {
 					UpdatedAt: 50,
 				}},
 			))
-			rows, err = ListChatConversations(context.Background(), 1)
+			rows, _, err = ListChatConversations(context.Background(), 1, 1, MaxChatConversationPageSize)
 			require.NoError(t, err)
 			require.Len(t, rows, 2)
 			assert.Equal(t, "chat-2", rows[0].Id)
 
 			require.NoError(t, DeleteChatConversation(context.Background(), 1, "chat-1"))
-			rows, err = ListChatConversations(context.Background(), 1)
+			rows, _, err = ListChatConversations(context.Background(), 1, 1, MaxChatConversationPageSize)
 			require.NoError(t, err)
 			require.Len(t, rows, 1)
 			assert.Equal(t, "chat-2", rows[0].Id)
@@ -223,9 +227,28 @@ func testChatConversationDatabaseMatrix(t *testing.T) {
 				1,
 				bulkSessions[MaxChatConversationBatchSize:],
 			))
-			rows, err = ListChatConversations(context.Background(), 1)
+			rows, total, err := ListChatConversations(
+				context.Background(),
+				1,
+				1,
+				MaxChatConversationBatchSize,
+			)
 			require.NoError(t, err)
-			assert.Len(t, rows, MaxChatConversationBatchSize+6)
+			assert.Equal(t, int64(MaxChatConversationBatchSize+6), total)
+			assert.Len(t, rows, MaxChatConversationBatchSize)
+
+			nextRows, _, err := ListChatConversations(
+				context.Background(),
+				1,
+				2,
+				MaxChatConversationBatchSize,
+			)
+			require.NoError(t, err)
+			assert.Len(t, nextRows, 6)
+
+			detail, err = GetChatConversation(context.Background(), 1, "chat-2")
+			require.NoError(t, err)
+			assert.JSONEq(t, `[{"key":"message-3"}]`, string(detail.Messages))
 		})
 	}
 }

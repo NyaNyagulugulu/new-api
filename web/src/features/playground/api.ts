@@ -31,6 +31,7 @@ import { sanitizeMessagesOnLoad } from './lib/message/message-streaming-utils'
 import { chatSessionsSchema } from './lib/storage/storage-schema'
 import type {
   ChatImportResult,
+  ChatConversationPage,
   ChatSession,
   ChatCompletionRequest,
   ChatCompletionResponse,
@@ -141,53 +142,111 @@ type ServerChatSession = {
   id: string
   title: string
   persona_id?: number
-  messages: unknown
+  messages?: unknown
   created_at: number
   updated_at: number
 }
 
-function parseChatSessions(value: unknown): ChatSession[] {
-  if (!Array.isArray(value)) return []
+function parseChatSession(
+  value: unknown,
+  messagesLoaded: boolean
+): ChatSession | null {
+  const row = value as Partial<ServerChatSession>
+  if (
+    typeof row.id !== 'string' ||
+    typeof row.title !== 'string' ||
+    typeof row.created_at !== 'number' ||
+    typeof row.updated_at !== 'number'
+  ) {
+    return null
+  }
+  if (messagesLoaded && !Array.isArray(row.messages)) {
+    return null
+  }
 
-  const sessions = value.flatMap((item) => {
-    const row = item as Partial<ServerChatSession>
-    if (
-      typeof row.id !== 'string' ||
-      typeof row.title !== 'string' ||
-      typeof row.created_at !== 'number' ||
-      typeof row.updated_at !== 'number'
-    ) {
-      return []
-    }
-    return [
-      {
-        id: row.id,
-        title: row.title,
-        personaId:
-          typeof row.persona_id === 'number' && row.persona_id >= 0
-            ? row.persona_id
-            : 0,
-        messages: row.messages,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      },
-    ]
+  const parsed = chatSessionsSchema.safeParse([
+    {
+      id: row.id,
+      title: row.title,
+      personaId:
+        typeof row.persona_id === 'number' && row.persona_id >= 0
+          ? row.persona_id
+          : 0,
+      messages: messagesLoaded ? row.messages : [],
+      messagesLoaded,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    },
+  ])
+  if (!parsed.success) return null
+
+  return normalizeChatSessionRecency({
+    ...parsed.data[0],
+    messages: messagesLoaded
+      ? sanitizeMessagesOnLoad(parsed.data[0].messages)
+      : [],
   })
-  const parsed = chatSessionsSchema.safeParse(sessions)
-  return parsed.success
-    ? parsed.data.map((session) =>
-        normalizeChatSessionRecency({
-          ...session,
-          messages: sanitizeMessagesOnLoad(session.messages),
-        })
-      )
-    : []
 }
 
-export async function getChatConversations(): Promise<ChatSession[]> {
-  const res = await api.get(API_ENDPOINTS.CHAT_CONVERSATIONS)
+export async function getChatConversations(
+  page = 1,
+  pageSize = 30
+): Promise<ChatConversationPage> {
+  const res = await api.get(API_ENDPOINTS.CHAT_CONVERSATIONS, {
+    params: { page, page_size: pageSize },
+  })
   const data = requireServerSuccess(res.data)
-  return parseChatSessions(data?.data)
+  if (Array.isArray(data?.data)) {
+    const sessions = data.data
+      .map((item: unknown) => parseChatSession(item, true))
+      .filter(
+        (session: ChatSession | null): session is ChatSession =>
+          session !== null
+      )
+    return {
+      sessions,
+      page,
+      pageSize,
+      total: sessions.length,
+      hasMore: false,
+    }
+  }
+
+  const payload = data?.data as {
+    items?: unknown
+    page?: number
+    page_size?: number
+    total?: number
+    has_more?: boolean
+  }
+  const sessions = Array.isArray(payload?.items)
+    ? payload.items
+        .map((item: unknown) => parseChatSession(item, false))
+        .filter(
+          (session: ChatSession | null): session is ChatSession =>
+            session !== null
+        )
+    : []
+  return {
+    sessions,
+    page: typeof payload?.page === 'number' ? payload.page : page,
+    pageSize:
+      typeof payload?.page_size === 'number' ? payload.page_size : pageSize,
+    total: typeof payload?.total === 'number' ? payload.total : sessions.length,
+    hasMore: payload?.has_more === true,
+  }
+}
+
+export async function getChatConversation(id: string): Promise<ChatSession> {
+  const res = await api.get(
+    `${API_ENDPOINTS.CHAT_CONVERSATIONS}/${encodeURIComponent(id)}`
+  )
+  const data = requireServerSuccess(res.data)
+  const session = parseChatSession(data?.data, true)
+  if (!session) {
+    throw new Error('Invalid chat conversation')
+  }
+  return session
 }
 
 export async function syncChatConversations(

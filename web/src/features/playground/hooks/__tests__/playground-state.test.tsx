@@ -38,6 +38,7 @@ import { usePlaygroundState } from '../use-playground-state'
 const apiMocks = vi.hoisted(() => ({
   createEmbeddings: vi.fn(),
   deleteChatConversation: vi.fn(),
+  getChatConversation: vi.fn(),
   getChatConversations: vi.fn(),
   searchUserMemories: vi.fn(),
   sendChatCompletion: vi.fn(),
@@ -47,6 +48,7 @@ const apiMocks = vi.hoisted(() => ({
 vi.mock('../../api', () => ({
   createEmbeddings: apiMocks.createEmbeddings,
   deleteChatConversation: apiMocks.deleteChatConversation,
+  getChatConversation: apiMocks.getChatConversation,
   getChatConversations: apiMocks.getChatConversations,
   searchUserMemories: apiMocks.searchUserMemories,
   sendChatCompletion: apiMocks.sendChatCompletion,
@@ -67,7 +69,16 @@ vi.mock('../use-stream-request', () => ({
 
 beforeEach(() => {
   localStorage.clear()
-  apiMocks.getChatConversations.mockResolvedValue([])
+  apiMocks.getChatConversations.mockResolvedValue({
+    sessions: [],
+    page: 1,
+    pageSize: 30,
+    total: 0,
+    hasMore: false,
+  })
+  apiMocks.getChatConversation.mockRejectedValue(
+    new Error('Conversation not found')
+  )
   apiMocks.createEmbeddings.mockResolvedValue([[1, 0, 0]])
   apiMocks.searchUserMemories.mockResolvedValue([])
   apiMocks.syncChatConversations.mockResolvedValue([])
@@ -117,16 +128,158 @@ test('opens a conversation from its permalink session id', async () => {
   )
 })
 
-test('renaming a conversation does not change its latest-message time', async () => {
-  apiMocks.getChatConversations.mockResolvedValue([
+test('loads messages only for the selected conversation', async () => {
+  const summaries = [
     {
       id: 'chat-1',
-      title: '',
-      messages: appendUserMessagePair([], 'Existing question'),
+      title: 'First chat',
+      personaId: 0,
+      messages: [],
+      messagesLoaded: false,
       createdAt: 100,
       updatedAt: 200,
     },
+    {
+      id: 'chat-2',
+      title: 'Second chat',
+      personaId: 0,
+      messages: [],
+      messagesLoaded: false,
+      createdAt: 300,
+      updatedAt: 400,
+    },
+  ]
+  apiMocks.getChatConversations.mockResolvedValue({
+    sessions: summaries,
+    page: 1,
+    pageSize: 30,
+    total: 2,
+    hasMore: false,
+  })
+  apiMocks.getChatConversation.mockImplementation((id: string) =>
+    Promise.resolve({
+      ...summaries.find((session) => session.id === id),
+      messages: appendUserMessagePair([], `Message for ${id}`),
+      messagesLoaded: true,
+    })
+  )
+
+  const { result } = renderHook(() => usePlaygroundState())
+  await waitFor(() => expect(result.current.isLoadingMessages).toBe(false))
+
+  expect(apiMocks.getChatConversation).toHaveBeenCalledTimes(1)
+  expect(apiMocks.getChatConversation).toHaveBeenCalledWith('chat-2')
+  expect(result.current.messages[0]?.versions[0]?.content).toBe(
+    'Message for chat-2'
+  )
+
+  act(() => result.current.selectChat('chat-1'))
+  await waitFor(() => expect(result.current.isLoadingMessages).toBe(false))
+
+  expect(apiMocks.getChatConversation).toHaveBeenCalledTimes(2)
+  expect(apiMocks.getChatConversation).toHaveBeenLastCalledWith('chat-1')
+  expect(result.current.messages[0]?.versions[0]?.content).toBe(
+    'Message for chat-1'
+  )
+})
+
+test('loads additional history metadata page by page', async () => {
+  apiMocks.getChatConversations
+    .mockResolvedValueOnce({
+      sessions: [
+        {
+          id: 'chat-1',
+          title: 'First chat',
+          personaId: 0,
+          messages: [],
+          messagesLoaded: false,
+          createdAt: 1,
+          updatedAt: 2,
+        },
+      ],
+      page: 1,
+      pageSize: 30,
+      total: 2,
+      hasMore: true,
+    })
+    .mockResolvedValueOnce({
+      sessions: [
+        {
+          id: 'chat-2',
+          title: 'Second chat',
+          personaId: 0,
+          messages: [],
+          messagesLoaded: false,
+          createdAt: 3,
+          updatedAt: 4,
+        },
+      ],
+      page: 2,
+      pageSize: 30,
+      total: 2,
+      hasMore: false,
+    })
+  apiMocks.getChatConversation.mockResolvedValue({
+    id: 'chat-1',
+    title: 'First chat',
+    personaId: 0,
+    messages: [
+      {
+        key: 'message-chat-1',
+        from: 'user',
+        versions: [{ id: 'version-chat-1', content: 'Loaded first chat' }],
+        createdAt: 2,
+      },
+    ],
+    messagesLoaded: true,
+    createdAt: 1,
+    updatedAt: 2,
+  })
+
+  const { result } = renderHook(() => usePlaygroundState())
+  await waitFor(() => expect(result.current.isLoadingMessages).toBe(false))
+  expect(result.current.hasMoreSessions).toBe(true)
+  expect(result.current.sessions).toHaveLength(1)
+
+  await act(async () => {
+    await result.current.loadMoreSessions()
+  })
+
+  expect(apiMocks.getChatConversations).toHaveBeenLastCalledWith(2, 30)
+  expect(result.current.sessions.map((session) => session.id)).toEqual([
+    'chat-2',
+    'chat-1',
   ])
+  expect(result.current.hasMoreSessions).toBe(false)
+})
+
+test('renaming a conversation does not change its latest-message time', async () => {
+  apiMocks.getChatConversations.mockResolvedValue({
+    sessions: [
+      {
+        id: 'chat-1',
+        title: '',
+        personaId: 0,
+        messages: [],
+        messagesLoaded: false,
+        createdAt: 100,
+        updatedAt: 200,
+      },
+    ],
+    page: 1,
+    pageSize: 30,
+    total: 1,
+    hasMore: false,
+  })
+  apiMocks.getChatConversation.mockResolvedValue({
+    id: 'chat-1',
+    title: '',
+    personaId: 0,
+    messages: appendUserMessagePair([], 'Existing question'),
+    messagesLoaded: true,
+    createdAt: 100,
+    updatedAt: 200,
+  })
   const { result } = renderHook(() => usePlaygroundState())
   await waitFor(() => expect(result.current.isLoadingMessages).toBe(false))
   const updatedAtBeforeRename = result.current.sessions[0].updatedAt
@@ -233,6 +386,14 @@ test('syncs every imported conversation across multiple batches', async () => {
   })
 
   expect(result.current.sessions).toHaveLength(55)
+  expect(result.current.visibleSessions).toHaveLength(30)
+  expect(result.current.hasMoreSessions).toBe(true)
+  await act(async () => {
+    await result.current.loadMoreSessions()
+  })
+  expect(result.current.visibleSessions).toHaveLength(55)
+  expect(result.current.hasMoreSessions).toBe(false)
+
   await waitFor(
     () => expect(apiMocks.syncChatConversations).toHaveBeenCalledTimes(2),
     { timeout: 5_000 }

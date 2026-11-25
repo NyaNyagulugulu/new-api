@@ -111,6 +111,7 @@ export function createChatSession(
     title: '',
     personaId,
     messages,
+    messagesLoaded: true,
     createdAt: timestamp,
     updatedAt: timestamp,
   }
@@ -195,7 +196,12 @@ export function mergeChatSessions(
   for (const localSession of localSessions) {
     const serverSession = merged.get(localSession.id)
     if (serverSession) {
-      if (localSession.updatedAt > serverSession.updatedAt) {
+      if (
+        localSession.updatedAt > serverSession.updatedAt ||
+        (localSession.updatedAt === serverSession.updatedAt &&
+          localSession.messagesLoaded !== false &&
+          serverSession.messagesLoaded === false)
+      ) {
         merged.set(localSession.id, localSession)
       }
       continue

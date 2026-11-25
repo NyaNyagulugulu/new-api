@@ -67,6 +67,7 @@ beforeAll(() => {
     Delete: 'Delete',
     'Delete chat?': 'Delete chat?',
     Generating: 'Generating',
+    'Load more': 'Load more',
     'New chat': 'New chat',
     'No chats found': 'No chats found',
     'No chats yet': 'No chats yet',
@@ -88,7 +89,10 @@ function renderSidebar(
   overrides: {
     disabled?: boolean
     generatingSessionId?: string
+    hasMore?: boolean
+    isLoadingMore?: boolean
     onNewChat?: () => void
+    onLoadMore?: () => void
     onSelectChat?: (sessionId: string) => void
     onRenameChat?: (sessionId: string, title: string) => void
     unreadSessionIds?: ReadonlySet<string>
@@ -103,7 +107,10 @@ function renderSidebar(
           ? new Set([overrides.generatingSessionId])
           : undefined
       }
+      hasMore={overrides.hasMore}
+      isLoadingMore={overrides.isLoadingMore}
       onDeleteChat={() => undefined}
+      onLoadMore={overrides.onLoadMore}
       onNewChat={overrides.onNewChat ?? (() => undefined)}
       onRenameChat={overrides.onRenameChat ?? (() => undefined)}
       onSelectChat={overrides.onSelectChat ?? (() => undefined)}
@@ -144,6 +151,16 @@ test('opens settings from the bottom of the conversation sidebar', async () => {
   await user.click(screen.getByRole('button', { name: 'Settings' }))
 
   expect(screen.getByText('Settings dialog')).toBeInTheDocument()
+})
+
+test('loads the next history segment on request', async () => {
+  const user = userEvent.setup()
+  const onLoadMore = vi.fn()
+  renderSidebar({ hasMore: true, onLoadMore })
+
+  await user.click(screen.getByRole('button', { name: 'Load more' }))
+
+  expect(onLoadMore).toHaveBeenCalledOnce()
 })
 
 test('renaming a conversation saves the new title', async () => {

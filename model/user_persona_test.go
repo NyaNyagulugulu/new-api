@@ -111,7 +111,7 @@ func testUserPersonaDatabaseMatrix(t *testing.T) {
 			require.NoError(t, err)
 			assert.Empty(t, personas)
 
-			conversations, err := ListChatConversations(context.Background(), 1)
+			conversations, _, err := ListChatConversations(context.Background(), 1, 1, MaxChatConversationPageSize)
 			require.NoError(t, err)
 			require.Len(t, conversations, 1)
 			assert.Zero(t, conversations[0].PersonaId)

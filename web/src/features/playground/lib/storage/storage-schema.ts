@@ -136,6 +136,7 @@ export const chatSessionSchema = z.object({
   title: z.string().max(200),
   personaId: z.number().int().nonnegative().default(0),
   messages: messagesSchema,
+  messagesLoaded: z.boolean().optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
 })
