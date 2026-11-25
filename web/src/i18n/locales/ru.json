@@ -1027,6 +1027,7 @@
     "Cache write tokens": "Токены записи кэша",
     "Cached": "Кэш",
     "Cached input": "Кэшированный ввод",
+    "Cached input tokens": "Кэшированные входные токены",
     "Cached tokens": "Кэшированные токены",
     "Calculated price: ${{price}} per 1M tokens": "Расчётная цена: ${{price}} за 1М токенов",
     "Calculated ratio: {{ratio}}": "Расчётный коэффициент: {{ratio}}",

@@ -131,7 +131,7 @@ export function CacheStatsDialog(props: Props) {
       data.push({ key: 'Prompt tokens', value: promptTokens })
     }
     if (cachedTokens > 0) {
-      data.push({ key: 'Cached tokens', value: cachedTokens })
+      data.push({ key: t('Cached input tokens'), value: cachedTokens })
     }
     if (completionTokens > 0) {
       data.push({ key: 'Completion tokens', value: completionTokens })

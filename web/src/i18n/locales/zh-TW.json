@@ -1027,6 +1027,7 @@
     "Cache write tokens": "快取寫入 Token",
     "Cached": "緩存",
     "Cached input": "緩存輸入",
+    "Cached input tokens": "快取輸入",
     "Cached tokens": "快取權杖",
     "Calculated price: ${{price}} per 1M tokens": "計算價格：${{price}} / 1M tokens",
     "Calculated ratio: {{ratio}}": "計算倍率：{{ratio}}",

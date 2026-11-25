@@ -1027,6 +1027,7 @@
     "Cache write tokens": "Token ghi bộ nhớ đệm",
     "Cached": "Đã cache",
     "Cached input": "Đầu vào đã cache",
+    "Cached input tokens": "Token đầu vào được lưu đệm",
     "Cached tokens": "Token đã lưu đệm",
     "Calculated price: ${{price}} per 1M tokens": "Giá tính toán: ${{price}} mỗi 1M token",
     "Calculated ratio: {{ratio}}": "Tỷ lệ tính toán: {{ratio}}",

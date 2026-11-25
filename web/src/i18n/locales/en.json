@@ -1027,6 +1027,7 @@
     "Cache write tokens": "Cache write tokens",
     "Cached": "Cached",
     "Cached input": "Cached input",
+    "Cached input tokens": "Cached input tokens",
     "Cached tokens": "Cached tokens",
     "Calculated price: ${{price}} per 1M tokens": "Calculated price: ${{price}} per 1M tokens",
     "Calculated ratio: {{ratio}}": "Calculated ratio: {{ratio}}",

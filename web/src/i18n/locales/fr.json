@@ -1027,6 +1027,7 @@
     "Cache write tokens": "Jetons d’écriture du cache",
     "Cached": "Cache",
     "Cached input": "Entrée mise en cache",
+    "Cached input tokens": "Tokens d’entrée en cache",
     "Cached tokens": "Tokens en cache",
     "Calculated price: ${{price}} per 1M tokens": "Prix calculé : ${{price}} par 1M tokens",
     "Calculated ratio: {{ratio}}": "Ratio calculé : {{ratio}}",

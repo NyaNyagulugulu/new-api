@@ -106,7 +106,7 @@ export function MessageMetadata(props: MessageMetadataProps) {
         ...(usage.cachedTokens > 0
           ? [
               {
-                label: t('Cached tokens'),
+                label: t('Cached input tokens'),
                 value: formatNumber(usage.cachedTokens, locale),
               },
             ]

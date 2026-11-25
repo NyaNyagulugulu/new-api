@@ -1027,6 +1027,7 @@
     "Cache write tokens": "キャッシュ書き込みトークン",
     "Cached": "キャッシュ",
     "Cached input": "キャッシュ入力",
+    "Cached input tokens": "キャッシュ入力トークン",
     "Cached tokens": "キャッシュ済みトークン",
     "Calculated price: ${{price}} per 1M tokens": "計算価格：${{price}} / 1M トークン",
     "Calculated ratio: {{ratio}}": "計算倍率：{{ratio}}",

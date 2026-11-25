@@ -1027,6 +1027,7 @@
     "Cache write tokens": "缓存写入 Token",
     "Cached": "缓存",
     "Cached input": "缓存输入",
+    "Cached input tokens": "缓存输入",
     "Cached tokens": "缓存令牌",
     "Calculated price: ${{price}} per 1M tokens": "计算价格：${{price}} / 1M tokens",
     "Calculated ratio: {{ratio}}": "计算倍率：{{ratio}}",
