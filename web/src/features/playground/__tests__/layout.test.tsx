@@ -24,7 +24,6 @@ import { DEFAULT_CONFIG, DEFAULT_PARAMETER_ENABLED } from '../constants'
 import { Playground } from '../index'
 
 const mocks = vi.hoisted(() => ({
-  back: vi.fn(),
   importConversations: vi.fn(),
   navigate: vi.fn(),
   selectChat: vi.fn(),
@@ -33,12 +32,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
-  useRouter: () => ({
-    history: {
-      back: mocks.back,
-      canGoBack: () => true,
-    },
-  }),
 }))
 
 vi.mock('@/features/pricing/hooks/use-pricing-data', () => ({
@@ -151,12 +144,13 @@ vi.mock('../hooks', () => ({
   }),
 }))
 
-test('provides back navigation from the web chat header', async () => {
+test('returns to the dashboard overview from the web chat header', async () => {
   const user = userEvent.setup()
   render(<Playground />)
+  mocks.navigate.mockClear()
 
   await user.click(screen.getByRole('button', { name: 'Back' }))
-  expect(mocks.back).toHaveBeenCalledOnce()
+  expect(mocks.navigate).toHaveBeenCalledWith({ to: '/dashboard' })
 })
 
 test('opens the active conversation at its permalink', () => {

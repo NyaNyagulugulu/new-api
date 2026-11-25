@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useNavigate, useRouter } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
 import {
   ArrowLeftIcon,
   PanelLeftIcon,
@@ -70,7 +70,6 @@ type PlaygroundProps = {
 export function Playground(props: PlaygroundProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const router = useRouter()
   const [historyOpen, setHistoryOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [unreadSessionIds, setUnreadSessionIds] = useState<ReadonlySet<string>>(
@@ -312,11 +311,6 @@ export function Playground(props: PlaygroundProps) {
   const isActiveSessionReady = activeSession?.messagesLoaded !== false
 
   const handleBack = () => {
-    if (router.history.canGoBack()) {
-      router.history.back()
-      return
-    }
-
     void navigate({ to: '/dashboard' })
   }
 
