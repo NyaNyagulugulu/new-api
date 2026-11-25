@@ -52,9 +52,7 @@ export function getChatSessionLatestMessageTime(session: ChatSession): number {
 }
 
 export function getChatSessionRecencyTime(session: ChatSession): number {
-  // Streaming also bumps session.updatedAt. Prefer stable message timestamps so
-  // sidebar order changes only on real conversation activity.
-  return getChatSessionLatestMessageTime(session) || session.updatedAt
+  return session.updatedAt
 }
 
 export function normalizeChatSessionRecency(session: ChatSession): ChatSession {

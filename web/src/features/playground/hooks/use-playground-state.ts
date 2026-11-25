@@ -31,6 +31,7 @@ import {
   applyMessageStateUpdate,
   createChatSessionId,
   createChatSession,
+  getChatSessionLatestMessageTime,
   getChatSessionRecencyTime,
   getInitialParameterEnabled,
   getInitialPlaygroundConfig,
@@ -109,7 +110,13 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
     )
     const nextSessions = existing
       ? sessionsRef.current.map((session) =>
-          session.id === detail.id ? detail : session
+          session.id === detail.id
+            ? {
+                ...detail,
+                createdAt: session.createdAt,
+                updatedAt: session.updatedAt,
+              }
+            : session
         )
       : [...sessionsRef.current, detail]
     const sorted = nextSessions.sort(
@@ -261,19 +268,26 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
           const existingIndex = loadedSessions.findIndex(
             (session) => session.id === detail.id
           )
+          const existingSession =
+            existingIndex === -1 ? null : loadedSessions[existingIndex]
+          const hydratedDetail = {
+            ...detail,
+            createdAt: existingSession?.createdAt ?? detail.createdAt,
+            updatedAt: existingSession?.updatedAt ?? detail.updatedAt,
+          }
           loadedSessions =
             existingIndex === -1
-              ? [detail, ...loadedSessions]
+              ? [hydratedDetail, ...loadedSessions]
               : loadedSessions.map((session) =>
-                  session.id === detail.id ? detail : session
+                  session.id === detail.id ? hydratedDetail : session
                 )
           const knownIndex = serverKnownSessions.findIndex(
             (session) => session.id === detail.id
           )
           if (knownIndex === -1) {
-            serverKnownSessions.push(detail)
+            serverKnownSessions.push(hydratedDetail)
           } else {
-            serverKnownSessions[knownIndex] = detail
+            serverKnownSessions[knownIndex] = hydratedDetail
           }
         } catch {
           if (
@@ -443,7 +457,13 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
           (session) => session.id !== targetSessionId
         )
         if (nextMessages.length === 0) {
-          const updatedAt = Math.max(Date.now(), currentSession.updatedAt + 1)
+          const updatedAt = Math.max(
+            currentSession.updatedAt,
+            getChatSessionLatestMessageTime({
+              ...currentSession,
+              messages: nextMessages,
+            }) || Date.now()
+          )
           return [
             {
               ...currentSession,
@@ -454,7 +474,13 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
           ]
         }
 
-        const updatedAt = Math.max(Date.now(), currentSession.updatedAt + 1)
+        const updatedAt = Math.max(
+          currentSession.updatedAt,
+          getChatSessionLatestMessageTime({
+            ...currentSession,
+            messages: nextMessages,
+          }) || Date.now()
+        )
         return [
           {
             ...currentSession,

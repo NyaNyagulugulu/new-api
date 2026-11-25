@@ -20,7 +20,6 @@ import { api } from '@/lib/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { API_ENDPOINTS } from './constants'
-import { normalizeChatSessionRecency } from './lib/chat/chat-sessions'
 import {
   parseWebSearchSources,
   parseWebSearchStatus,
@@ -180,12 +179,12 @@ function parseChatSession(
   ])
   if (!parsed.success) return null
 
-  return normalizeChatSessionRecency({
+  return {
     ...parsed.data[0],
     messages: messagesLoaded
       ? sanitizeMessagesOnLoad(parsed.data[0].messages)
       : [],
-  })
+  }
 }
 
 export async function getChatConversations(

@@ -117,6 +117,35 @@ test('stream updates target an existing background session', async () => {
   )
 })
 
+test('streaming content does not repeatedly change conversation recency', async () => {
+  const { result } = renderHook(() => usePlaygroundState())
+  await waitFor(() => expect(result.current.isLoadingMessages).toBe(false))
+
+  let sessionId = ''
+  act(() => {
+    sessionId = result.current.ensureActiveSessionId()
+    result.current.updateMessages(appendUserMessagePair([], 'Hello'), sessionId)
+  })
+  const updatedAt = result.current.sessions.find(
+    (session) => session.id === sessionId
+  )?.updatedAt
+
+  act(() => {
+    result.current.updateMessages(
+      (messages) =>
+        updateLastAssistantMessage(messages, (message) =>
+          applyStreamingChunk(message, 'content', 'Streaming')
+        ),
+      sessionId
+    )
+  })
+
+  expect(
+    result.current.sessions.find((session) => session.id === sessionId)
+      ?.updatedAt
+  ).toBe(updatedAt)
+})
+
 test('opens a conversation from its permalink session id', async () => {
   const conversationId = '6b062a5d-40e4-83e8-a783-5a6675934b43'
   const { result } = renderHook(() => usePlaygroundState(conversationId))
@@ -156,13 +185,16 @@ test('loads messages only for the selected conversation', async () => {
     total: 2,
     hasMore: false,
   })
-  apiMocks.getChatConversation.mockImplementation((id: string) =>
-    Promise.resolve({
-      ...summaries.find((session) => session.id === id),
+  apiMocks.getChatConversation.mockImplementation((id: string) => {
+    const summary = summaries.find((session) => session.id === id)
+    return Promise.resolve({
+      ...summary,
       messages: appendUserMessagePair([], `Message for ${id}`),
       messagesLoaded: true,
+      createdAt: 1,
+      updatedAt: 1,
     })
-  )
+  })
 
   const { result } = renderHook(() => usePlaygroundState())
   await waitFor(() => expect(result.current.isLoadingMessages).toBe(false))
@@ -181,6 +213,13 @@ test('loads messages only for the selected conversation', async () => {
   expect(result.current.messages[0]?.versions[0]?.content).toBe(
     'Message for chat-1'
   )
+  expect(result.current.sessions.map((session) => session.id)).toEqual([
+    'chat-2',
+    'chat-1',
+  ])
+  expect(result.current.sessions.map((session) => session.updatedAt)).toEqual([
+    400, 200,
+  ])
 })
 
 test('loads additional history metadata page by page', async () => {
