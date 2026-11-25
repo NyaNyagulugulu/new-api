@@ -42,7 +42,6 @@ import {
   MAX_LOADED_SESSIONS_CHARS,
   MAX_STORED_MESSAGES,
   MAX_STORED_MESSAGES_BYTES,
-  MAX_STORED_SESSIONS,
   STORAGE_VERSION,
   chatSessionsSchema,
   messagesSchema,
@@ -121,10 +120,6 @@ function trimMessages(messages: Message[]): Message[] {
   }
 
   return messages.slice(-MAX_STORED_MESSAGES)
-}
-
-function trimChatSessions(sessions: ChatSession[]): ChatSession[] {
-  return sessions.slice(0, MAX_STORED_SESSIONS)
 }
 
 function getMessageSize(message: Message): number {
@@ -469,7 +464,7 @@ export function loadChatSessions(): ChatSession[] {
         })
       )
 
-      return trimChatSessionsByContentSize(trimChatSessions(normalized))
+      return trimChatSessionsByContentSize(normalized)
     }
 
     const legacyMessages = loadMessages()
@@ -492,7 +487,7 @@ export function loadChatSessions(): ChatSession[] {
 export function saveChatSessions(sessions: ChatSession[]): void {
   try {
     const parsed = chatSessionsSchema.parse(
-      trimChatSessions(sessions)
+      trimChatSessionsByContentSize(sessions)
     ) as ChatSession[]
     writeStoredValue(STORAGE_KEYS.SESSIONS, parsed)
   } catch (error) {

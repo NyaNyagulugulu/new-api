@@ -86,9 +86,9 @@ func TestImportDeepSeekChatArchive(t *testing.T) {
 	assert.Equal(t, "Need a brief reply.", session.Messages[1].Reasoning.Content)
 }
 
-func TestImportCapsLatestConversations(t *testing.T) {
+func TestImportKeepsEveryConversation(t *testing.T) {
 	files := map[string]string{}
-	for index := range MaxChatImportSessions + 5 {
+	for index := range 55 {
 		id := fmt.Sprintf("chat-%02d", index)
 		files["chat_sessions/"+id+".json"] = fmt.Sprintf(`{
 			"id":%q,
@@ -106,9 +106,9 @@ func TestImportCapsLatestConversations(t *testing.T) {
 
 	result, err := ImportChatConversationsFromPath(writeChatImportZip(t, files))
 	require.NoError(t, err)
-	assert.Equal(t, MaxChatImportSessions+5, result.Found)
-	assert.Len(t, result.Sessions, MaxChatImportSessions)
-	assert.Equal(t, 5, result.Skipped)
+	assert.Equal(t, 55, result.Found)
+	assert.Len(t, result.Sessions, 55)
+	assert.Zero(t, result.Skipped)
 }
 
 func TestImportTruncatesLongTitlesAtAValidUTF8Boundary(t *testing.T) {

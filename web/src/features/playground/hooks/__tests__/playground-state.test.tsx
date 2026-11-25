@@ -29,6 +29,7 @@ import {
 import type {
   ChatCompletionRequest,
   ChatCompletionUsage,
+  ImportedChatSession,
   Message,
 } from '../../types'
 import { useChatHandler } from '../use-chat-handler'
@@ -204,6 +205,42 @@ test('imports conversations into the selected persona ordered by latest message'
   ])
   expect(newestId).toBe('imported-newer')
   expect(result.current.activeSession?.id).toBe('imported-newer')
+})
+
+test('syncs every imported conversation across multiple batches', async () => {
+  apiMocks.syncChatConversations.mockClear()
+  const { result } = renderHook(() => usePlaygroundState())
+  await waitFor(() => expect(result.current.isLoadingMessages).toBe(false))
+  const importedSessions: ImportedChatSession[] = Array.from(
+    { length: 55 },
+    (_, index) => ({
+      id: `imported-${index}`,
+      title: `Imported ${index}`,
+      messages: [
+        {
+          key: `message-${index}`,
+          from: 'user',
+          versions: [{ id: `version-${index}`, content: `Message ${index}` }],
+        },
+      ],
+      createdAt: index,
+      updatedAt: index,
+    })
+  )
+
+  act(() => {
+    result.current.importConversations(importedSessions, 0)
+  })
+
+  expect(result.current.sessions).toHaveLength(55)
+  await waitFor(
+    () => expect(apiMocks.syncChatConversations).toHaveBeenCalledTimes(2),
+    { timeout: 5_000 }
+  )
+  const batchSizes = apiMocks.syncChatConversations.mock.calls.map(
+    (call: unknown[]) => (call[0] as unknown[]).length
+  )
+  expect(batchSizes.sort()).toEqual([5, 50])
 })
 
 function usePlaygroundHarness(contextWindowTokens?: number) {

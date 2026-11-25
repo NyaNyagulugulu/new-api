@@ -21,7 +21,6 @@ import { z } from 'zod'
 export const STORAGE_VERSION = 1
 export const MAX_STORED_MESSAGES = 100
 export const MAX_STORED_MESSAGES_BYTES = 1024 * 1024
-export const MAX_STORED_SESSIONS = 50
 export const MAX_LOADED_SESSIONS_CHARS = 180_000
 export const MAX_LOADED_MESSAGES_CHARS = 120_000
 export const MAX_LOADED_MESSAGE_CHARS = 40_000

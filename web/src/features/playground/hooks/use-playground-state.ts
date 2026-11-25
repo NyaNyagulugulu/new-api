@@ -42,7 +42,6 @@ import {
   saveParameterEnabled,
   type MessageStateUpdater,
 } from '../lib'
-import { MAX_STORED_SESSIONS } from '../lib/storage/storage-schema'
 import type {
   ChatSession,
   ImportedChatSession,
@@ -55,6 +54,8 @@ import type {
 
 const SESSION_SAVE_DEBOUNCE_MS = 500
 const SERVER_SYNC_DEBOUNCE_MS = 1200
+const SERVER_SYNC_BATCH_SIZE = 50
+const SERVER_SYNC_BATCH_BYTES = 24 * 1024 * 1024
 const EMPTY_MESSAGES: Message[] = []
 type SyncedSessionState = Pick<ChatSession, 'title' | 'updatedAt' | 'personaId'>
 
@@ -107,14 +108,44 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
     })
     if (changedSessions.length === 0) return
 
-    const changedSnapshot = changedSessions.map((session) => ({
-      id: session.id,
-      title: session.title,
-      updatedAt: session.updatedAt,
-      personaId: session.personaId,
-    }))
-    void syncChatConversations(changedSessions)
-      .then(() => {
+    const batches: ChatSession[][] = []
+    let batch: ChatSession[] = []
+    let batchBytes = 0
+    for (const session of changedSessions) {
+      const sessionBytes = new TextEncoder().encode(
+        JSON.stringify(session.messages)
+      ).byteLength
+      if (
+        batch.length > 0 &&
+        (batch.length >= SERVER_SYNC_BATCH_SIZE ||
+          batchBytes + sessionBytes > SERVER_SYNC_BATCH_BYTES)
+      ) {
+        batches.push(batch)
+        batch = []
+        batchBytes = 0
+      }
+      batch.push(session)
+      batchBytes += sessionBytes
+    }
+    if (batch.length > 0) {
+      batches.push(batch)
+    }
+
+    void (async () => {
+      for (const sessionsBatch of batches) {
+        const changedSnapshot = sessionsBatch.map((session) => ({
+          id: session.id,
+          title: session.title,
+          updatedAt: session.updatedAt,
+          personaId: session.personaId,
+        }))
+        try {
+          await syncChatConversations(sessionsBatch)
+        } catch {
+          // Keep this batch unsynced so a later edit retries the upload.
+          continue
+        }
+
         const currentSessionsById = new Map(
           sessionsRef.current.map((session) => [session.id, session])
         )
@@ -136,10 +167,8 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
             personaId: session.personaId,
           })
         }
-      })
-      .catch(() => {
-        // Keep the unsynced snapshot so a later edit retries the upload.
-      })
+      }
+    })()
   }, [])
 
   useEffect(() => {
@@ -471,13 +500,11 @@ export function usePlaygroundState(initialSessionId: string | null = null) {
         }
       }
 
-      const ordered = [...merged.values()]
-        .sort(
-          (left, right) =>
-            getChatSessionRecencyTime(right) -
-              getChatSessionRecencyTime(left) || left.id.localeCompare(right.id)
-        )
-        .slice(0, MAX_STORED_SESSIONS)
+      const ordered = [...merged.values()].sort(
+        (left, right) =>
+          getChatSessionRecencyTime(right) - getChatSessionRecencyTime(left) ||
+          left.id.localeCompare(right.id)
+      )
       sessionsRef.current = ordered
       setSessions(ordered)
       if (newestImported) {

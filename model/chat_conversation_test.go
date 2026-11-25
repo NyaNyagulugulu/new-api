@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 
@@ -201,6 +202,30 @@ func testChatConversationDatabaseMatrix(t *testing.T) {
 			require.Len(t, rows, 1)
 			assert.Equal(t, "chat-2", rows[0].Id)
 			assert.Equal(t, int64(50), rows[0].LastMessageAt)
+
+			bulkSessions := make([]ChatConversationInput, 0, MaxChatConversationBatchSize+5)
+			for index := range MaxChatConversationBatchSize + 5 {
+				bulkSessions = append(bulkSessions, ChatConversationInput{
+					Id:        fmt.Sprintf("bulk-%02d", index),
+					Title:     fmt.Sprintf("Bulk chat %d", index),
+					Messages:  json.RawMessage(`[{"key":"bulk-message"}]`),
+					CreatedAt: int64(1_000 + index),
+					UpdatedAt: int64(1_000 + index),
+				})
+			}
+			require.NoError(t, SyncChatConversations(
+				context.Background(),
+				1,
+				bulkSessions[:MaxChatConversationBatchSize],
+			))
+			require.NoError(t, SyncChatConversations(
+				context.Background(),
+				1,
+				bulkSessions[MaxChatConversationBatchSize:],
+			))
+			rows, err = ListChatConversations(context.Background(), 1)
+			require.NoError(t, err)
+			assert.Len(t, rows, MaxChatConversationBatchSize+6)
 		})
 	}
 }

@@ -59,14 +59,6 @@ export function PlaygroundImportDialog(props: PlaygroundImportDialogProps) {
       toast.success(
         t('Imported {{count}} conversations', { count: result.imported })
       )
-      if (result.skipped > 0) {
-        toast.info(
-          t(
-            'Only the latest {{count}} conversations are kept. {{skipped}} older conversations were skipped.',
-            { count: result.imported, skipped: result.skipped }
-          )
-        )
-      }
       props.onImported(result)
       props.onOpenChange(false)
       setUrl('')

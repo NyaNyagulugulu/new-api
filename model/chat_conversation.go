@@ -14,26 +14,26 @@ import (
 )
 
 const (
-	MaxChatConversations      = 50
-	MaxChatConversationIDLen  = 64
-	MaxChatConversationTitle  = 200
-	MaxChatConversationBytes  = 32 << 20
-	MaxChatConversationTotal  = 64 << 20
-	chatConversationTableName = "chat_conversations"
+	MaxChatConversationBatchSize = 50
+	MaxChatConversationIDLen     = 64
+	MaxChatConversationTitle     = 200
+	MaxChatConversationBytes     = 32 << 20
+	MaxChatConversationTotal     = 64 << 20
+	chatConversationTableName    = "chat_conversations"
 )
 
 var ErrChatConversationForbidden = errors.New("chat conversation belongs to another user")
 
 type ChatConversation struct {
-	Id            string          `json:"id" gorm:"primaryKey;type:varchar(64)"`
-	UserId        int             `json:"-" gorm:"not null;index:idx_chat_conversations_user_updated,priority:1"`
-	Title         string          `json:"title" gorm:"type:varchar(200);not null;default:''"`
-	PersonaId     int64           `json:"persona_id" gorm:"not null;default:0;index:idx_chat_conversations_user_persona"`
-	Messages      json.RawMessage `json:"messages" gorm:"type:json;not null"`
+	Id        string          `json:"id" gorm:"primaryKey;type:varchar(64)"`
+	UserId    int             `json:"-" gorm:"not null;index:idx_chat_conversations_user_updated,priority:1"`
+	Title     string          `json:"title" gorm:"type:varchar(200);not null;default:''"`
+	PersonaId int64           `json:"persona_id" gorm:"not null;default:0;index:idx_chat_conversations_user_persona"`
+	Messages  json.RawMessage `json:"messages" gorm:"type:json;not null"`
 	// Avoid GORM's automatic CreatedAt/UpdatedAt fields so client-provided
 	// conversation timestamps are stored exactly as sent.
-	StartedAt     int64           `json:"created_at" gorm:"column:created_at;type:bigint;not null;default:0"`
-	LastMessageAt int64           `json:"updated_at" gorm:"column:updated_at;type:bigint;not null;default:0;index:idx_chat_conversations_user_updated,priority:2"`
+	StartedAt     int64 `json:"created_at" gorm:"column:created_at;type:bigint;not null;default:0"`
+	LastMessageAt int64 `json:"updated_at" gorm:"column:updated_at;type:bigint;not null;default:0;index:idx_chat_conversations_user_updated,priority:2"`
 }
 
 func (ChatConversation) TableName() string {
@@ -80,7 +80,6 @@ func ListChatConversations(ctx context.Context, userId int) ([]ChatConversation,
 		Where("user_id = ?", userId).
 		Order("updated_at DESC").
 		Order("id ASC").
-		Limit(MaxChatConversations).
 		Find(&conversations).Error
 	return conversations, err
 }
@@ -93,8 +92,8 @@ func SyncChatConversations(
 	if userId <= 0 {
 		return fmt.Errorf("invalid user")
 	}
-	if len(sessions) > MaxChatConversations {
-		return fmt.Errorf("too many chat conversations")
+	if len(sessions) > MaxChatConversationBatchSize {
+		return fmt.Errorf("too many chat conversations in one sync batch")
 	}
 
 	return DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {

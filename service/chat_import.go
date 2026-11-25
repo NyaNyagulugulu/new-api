@@ -26,7 +26,6 @@ const (
 	MaxChatImportBytes            = 512 << 20
 	MaxChatImportJSONBytes        = 128 << 20
 	MaxChatImportSessionJSONBytes = 16 << 20
-	MaxChatImportSessions         = 50
 	MaxChatImportZipEntries       = 5_000
 	MaxChatImportImageBytes       = 4 << 20
 	MaxChatImportImagesPerMessage = 8
@@ -553,9 +552,6 @@ func finalizeChatImport(sessions []ImportedChatSession, found int) ChatImportRes
 	sort.SliceStable(unique, func(i, j int) bool {
 		return importedChatSessionRecency(unique[i]) > importedChatSessionRecency(unique[j])
 	})
-	if len(unique) > MaxChatImportSessions {
-		unique = unique[:MaxChatImportSessions]
-	}
 	return ChatImportResult{
 		Sessions: unique,
 		Found:    found,
