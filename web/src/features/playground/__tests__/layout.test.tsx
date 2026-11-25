@@ -110,6 +110,7 @@ vi.mock('../hooks', () => ({
     handleEditOpenChange: vi.fn(),
     applyEdit: vi.fn(),
     handleDeleteMessage: vi.fn(),
+    handleSwitchMessageVersion: vi.fn(),
   }),
   usePlaygroundOptions: () => ({ isLoadingModels: false }),
   usePlaygroundState: () => ({

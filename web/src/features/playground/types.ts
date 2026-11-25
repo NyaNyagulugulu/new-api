@@ -53,10 +53,33 @@ export interface MessageAttachment {
   dataUrl: string
 }
 
+export interface MessageReasoning {
+  content: string
+  duration: number
+  startedAt?: number
+  completedAt?: number
+  durationMs?: number
+}
+
+export interface MessageWebSearch {
+  status: WebSearchStatus
+}
+
 export interface MessageVersion {
   id: string
   content: string
   attachments?: MessageAttachment[]
+  model?: string
+  createdAt?: number
+  startedAt?: number
+  completedAt?: number
+  durationMs?: number
+  sources?: WebSearchSource[]
+  webSearch?: MessageWebSearch
+  reasoning?: MessageReasoning
+  status?: MessageStatus
+  errorCode?: string | null
+  usage?: MessageUsage
 }
 
 export interface MessageUsage {
@@ -79,6 +102,7 @@ export interface Message {
   key: string
   from: MessageRole
   versions: MessageVersion[]
+  activeVersionId?: string
   isContextSummary?: boolean
   model?: string
   createdAt?: number
@@ -86,16 +110,8 @@ export interface Message {
   completedAt?: number
   durationMs?: number
   sources?: WebSearchSource[]
-  webSearch?: {
-    status: WebSearchStatus
-  }
-  reasoning?: {
-    content: string
-    duration: number
-    startedAt?: number
-    completedAt?: number
-    durationMs?: number
-  }
+  webSearch?: MessageWebSearch
+  reasoning?: MessageReasoning
   isReasoningStreaming?: boolean
   isReasoningComplete?: boolean
   isContentComplete?: boolean

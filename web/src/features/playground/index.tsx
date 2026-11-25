@@ -147,6 +147,7 @@ export function Playground(props: PlaygroundProps) {
     handleEditOpenChange,
     applyEdit,
     handleDeleteMessage,
+    handleSwitchMessageVersion,
   } = usePlaygroundConversation({
     messages,
     updateMessages,
@@ -417,6 +418,7 @@ export function Playground(props: PlaygroundProps) {
             onDeleteMessage={handleDeleteMessage}
             onEditMessage={handleEditMessage}
             onRegenerateMessage={handleRegenerateWithSound}
+            onSwitchMessageVersion={handleSwitchMessageVersion}
             onSaveEdit={(newContent) => applyEdit(newContent, false)}
             onSaveEditAndSubmit={(newContent) => {
               completionSoundRef.current?.unlock()

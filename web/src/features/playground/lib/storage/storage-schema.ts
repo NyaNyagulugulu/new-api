@@ -67,12 +67,6 @@ const messageAttachmentSchema = z.object({
   dataUrl: z.string(),
 })
 
-const messageVersionSchema = z.object({
-  id: z.string(),
-  content: z.string(),
-  attachments: z.array(messageAttachmentSchema).optional(),
-})
-
 const sourceSchema = z.object({
   href: z.string(),
   title: z.string(),
@@ -108,10 +102,28 @@ const messageUsageSchema = z.object({
   auxiliaryCostUSD: z.number().optional(),
 })
 
+const messageVersionSchema = z.object({
+  id: z.string(),
+  content: z.string(),
+  attachments: z.array(messageAttachmentSchema).optional(),
+  model: z.string().optional(),
+  createdAt: z.number().optional(),
+  startedAt: z.number().optional(),
+  completedAt: z.number().optional(),
+  durationMs: z.number().optional(),
+  sources: z.array(sourceSchema).optional(),
+  webSearch: webSearchSchema.optional(),
+  reasoning: reasoningSchema.optional(),
+  status: messageStatusSchema.optional(),
+  errorCode: z.string().nullable().optional(),
+  usage: messageUsageSchema.optional(),
+})
+
 const messageSchema = z.object({
   key: z.string(),
   from: messageRoleSchema,
   versions: z.array(messageVersionSchema).min(1),
+  activeVersionId: z.string().optional(),
   isContextSummary: z.boolean().optional(),
   model: z.string().optional(),
   createdAt: z.number().optional(),

@@ -41,11 +41,13 @@ export function createMessageVersion(
   }
 }
 
-/**
- * Get current version from message (always returns the first version)
- */
 export function getCurrentVersion(message: Message): MessageVersion {
-  return message.versions[0] || { id: 'default', content: '' }
+  return (
+    message.versions.find(
+      (version) => version.id === message.activeVersionId
+    ) ||
+    message.versions[0] || { id: 'default', content: '' }
+  )
 }
 
 /**
@@ -75,7 +77,64 @@ export function updateCurrentVersionContent(
   const currentVersion = getCurrentVersion(message)
   return {
     ...message,
-    versions: [{ ...currentVersion, content }],
+    versions: message.versions.map((version) =>
+      version.id === currentVersion.id ? { ...version, content } : version
+    ),
+  }
+}
+
+export function captureCurrentMessageVersion(message: Message): Message {
+  const currentVersion = getCurrentVersion(message)
+  return {
+    ...message,
+    versions: message.versions.map((version) =>
+      version.id === currentVersion.id
+        ? {
+            ...version,
+            model: message.model,
+            createdAt: message.createdAt,
+            startedAt: message.startedAt,
+            completedAt: message.completedAt,
+            durationMs: message.durationMs,
+            sources: message.sources,
+            webSearch: message.webSearch,
+            reasoning: message.reasoning,
+            status: message.status,
+            errorCode: message.errorCode,
+            usage: message.usage,
+          }
+        : version
+    ),
+  }
+}
+
+export function switchMessageVersion(
+  message: Message,
+  versionId: string
+): Message {
+  const captured = captureCurrentMessageVersion(message)
+  const version = captured.versions.find((item) => item.id === versionId)
+  if (!version || version.id === getCurrentVersion(captured).id) {
+    return message
+  }
+
+  return {
+    ...captured,
+    activeVersionId: version.id,
+    model: version.model,
+    createdAt: version.createdAt ?? captured.createdAt,
+    startedAt: version.startedAt,
+    completedAt: version.completedAt,
+    durationMs: version.durationMs,
+    sources: version.sources,
+    webSearch: version.webSearch,
+    reasoning: version.reasoning,
+    status: version.status ?? MESSAGE_STATUS.COMPLETE,
+    errorCode: version.errorCode ?? null,
+    usage: version.usage,
+    isReasoningStreaming: false,
+    isReasoningComplete: true,
+    isContentComplete: true,
   }
 }
 
@@ -87,10 +146,12 @@ export function createUserMessage(
   createdAt: number = Date.now(),
   attachments: MessageAttachment[] = []
 ): Message {
+  const version = createMessageVersion(content, attachments)
   return {
     key: nanoid(),
     from: MESSAGE_ROLES.USER,
-    versions: [createMessageVersion(content, attachments)],
+    versions: [version],
+    activeVersionId: version.id,
     createdAt,
   }
 }
@@ -101,10 +162,12 @@ export function createUserMessage(
 export function createLoadingAssistantMessage(
   startedAt: number = Date.now()
 ): Message {
+  const version = createMessageVersion('')
   return {
     key: nanoid(),
     from: MESSAGE_ROLES.ASSISTANT,
-    versions: [createMessageVersion('')],
+    versions: [version],
+    activeVersionId: version.id,
     createdAt: startedAt,
     startedAt,
     reasoning: undefined,

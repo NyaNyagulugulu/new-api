@@ -23,6 +23,7 @@ import {
   applyMessageEdit,
   createRegeneratedMessages,
   removeMessageByKey,
+  switchMessageVersion,
 } from '../lib'
 import type { Message, MessageAttachment } from '../types'
 
@@ -116,6 +117,19 @@ export function usePlaygroundConversation({
     [updateMessages]
   )
 
+  const handleSwitchMessageVersion = useCallback(
+    (message: Message, versionId: string) => {
+      updateMessages((previousMessages) =>
+        previousMessages.map((item) =>
+          item.key === message.key
+            ? switchMessageVersion(item, versionId)
+            : item
+        )
+      )
+    },
+    [updateMessages]
+  )
+
   return {
     editingMessageKey,
     handleSendMessage,
@@ -124,5 +138,6 @@ export function usePlaygroundConversation({
     handleEditOpenChange,
     applyEdit,
     handleDeleteMessage,
+    handleSwitchMessageVersion,
   }
 }

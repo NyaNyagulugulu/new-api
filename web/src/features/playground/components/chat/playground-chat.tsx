@@ -40,6 +40,7 @@ import type {
 } from '../../types'
 import { MessageActions } from '../message/message-actions'
 import { MessageErrorActions } from '../message/message-error-actions'
+import { MessageVersionSwitcher } from '../message/message-version-switcher'
 import { PlaygroundMessageContent } from '../message/playground-message-content'
 import { PlaygroundMessageEditor } from '../message/playground-message-editor'
 import { PlaygroundEmptyState } from './playground-empty-state'
@@ -48,6 +49,7 @@ interface PlaygroundChatProps {
   messages: MessageType[]
   onCopyMessage?: (message: MessageType) => void
   onRegenerateMessage?: (message: MessageType) => void
+  onSwitchMessageVersion?: (message: MessageType, versionId: string) => void
   onEditMessage?: (message: MessageType) => void
   onDeleteMessage?: (message: MessageType) => void
   onSelectPrompt?: (prompt: string) => void
@@ -64,6 +66,7 @@ export function PlaygroundChat({
   messages,
   onCopyMessage,
   onRegenerateMessage,
+  onSwitchMessageVersion,
   onEditMessage,
   onDeleteMessage,
   onSelectPrompt,
@@ -132,6 +135,13 @@ export function PlaygroundChat({
       : null
     const alignment = getMessageAlignment(message, messageLayoutMode)
     const isSourceVisible = sourceMessageKeys.has(message.key)
+    const versionSwitcher = onSwitchMessageVersion ? (
+      <MessageVersionSwitcher
+        disabled={isGenerating}
+        message={message}
+        onSwitchVersion={onSwitchMessageVersion}
+      />
+    ) : null
 
     return (
       <Message
@@ -154,41 +164,46 @@ export function PlaygroundChat({
             <PlaygroundMessageContent
               alignment={alignment}
               actions={
-                <MessageActions
-                  message={message}
-                  onCopy={onCopyMessage}
-                  onRegenerate={onRegenerateMessage}
-                  onToggleSource={handleToggleMessageSource}
-                  onEdit={onEditMessage}
-                  onDelete={onDeleteMessage}
-                  isSourceVisible={isSourceVisible}
-                  isGenerating={isGenerating}
-                  alwaysVisible={alwaysShowActions}
-                  className='mt-1.5'
-                />
+                <div className='mt-1.5 flex flex-wrap items-center gap-2'>
+                  {versionSwitcher}
+                  <MessageActions
+                    message={message}
+                    onCopy={onCopyMessage}
+                    onRegenerate={onRegenerateMessage}
+                    onToggleSource={handleToggleMessageSource}
+                    onEdit={onEditMessage}
+                    onDelete={onDeleteMessage}
+                    isSourceVisible={isSourceVisible}
+                    isGenerating={isGenerating}
+                    alwaysVisible={alwaysShowActions}
+                  />
+                </div>
               }
               isSourceVisible={isSourceVisible}
               message={message}
               errorActions={
                 isError ? (
-                  <MessageErrorActions
-                    disabled={isGenerating}
-                    onRetry={
-                      onRegenerateMessage
-                        ? () => onRegenerateMessage(message)
-                        : undefined
-                    }
-                    onEditPrompt={
-                      onEditMessage && previousUserMessage
-                        ? () => onEditMessage(previousUserMessage)
-                        : undefined
-                    }
-                    onDelete={
-                      onDeleteMessage
-                        ? () => onDeleteMessage(message)
-                        : undefined
-                    }
-                  />
+                  <div className='mt-1.5 flex flex-wrap items-center gap-2'>
+                    {versionSwitcher}
+                    <MessageErrorActions
+                      disabled={isGenerating}
+                      onRetry={
+                        onRegenerateMessage
+                          ? () => onRegenerateMessage(message)
+                          : undefined
+                      }
+                      onEditPrompt={
+                        onEditMessage && previousUserMessage
+                          ? () => onEditMessage(previousUserMessage)
+                          : undefined
+                      }
+                      onDelete={
+                        onDeleteMessage
+                          ? () => onDeleteMessage(message)
+                          : undefined
+                      }
+                    />
+                  </div>
                 ) : undefined
               }
               versionContent={content}

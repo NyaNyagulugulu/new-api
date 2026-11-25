@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { MESSAGE_ROLES } from '../../constants'
+import { MESSAGE_ROLES, MESSAGE_STATUS } from '../../constants'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -37,7 +37,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { Message, MessageAttachment } from '../../types'
 import {
+  captureCurrentMessageVersion,
   createLoadingAssistantMessage,
+  createMessageVersion,
   createUserMessage,
   getMessageContent,
   updateCurrentVersionContent,
@@ -87,7 +89,31 @@ export function createRegeneratedMessages(
     ]
   }
 
-  return [...messages.slice(0, messageIndex), createLoadingAssistantMessage()]
+  const regeneratedAt = Date.now()
+  const currentMessage = captureCurrentMessageVersion(messages[messageIndex])
+  const version = createMessageVersion('')
+  return [
+    ...messages.slice(0, messageIndex),
+    {
+      ...currentMessage,
+      versions: [...currentMessage.versions, version],
+      activeVersionId: version.id,
+      model: undefined,
+      createdAt: regeneratedAt,
+      startedAt: regeneratedAt,
+      completedAt: undefined,
+      durationMs: undefined,
+      sources: undefined,
+      webSearch: undefined,
+      reasoning: undefined,
+      status: MESSAGE_STATUS.LOADING,
+      errorCode: null,
+      usage: undefined,
+      isReasoningStreaming: false,
+      isReasoningComplete: false,
+      isContentComplete: false,
+    },
+  ]
 }
 
 export function removeMessageByKey(
