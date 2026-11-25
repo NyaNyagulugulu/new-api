@@ -196,7 +196,21 @@ func DeleteAllUserMemories(c *gin.Context) {
 		common.ApiErrorMsg(c, "Invalid user")
 		return
 	}
-	deleted, err := model.DeleteAllUserMemories(c.Request.Context(), userId)
+	personaQuery, scoped := c.GetQuery("persona_id")
+	var (
+		deleted int64
+		err     error
+	)
+	if scoped {
+		personaId, parseErr := strconv.ParseInt(personaQuery, 10, 64)
+		if parseErr != nil || personaId < 0 {
+			common.ApiErrorMsg(c, "Invalid parameters")
+			return
+		}
+		deleted, err = model.DeleteUserMemoriesForPersona(c.Request.Context(), userId, personaId)
+	} else {
+		deleted, err = model.DeleteAllUserMemories(c.Request.Context(), userId)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return

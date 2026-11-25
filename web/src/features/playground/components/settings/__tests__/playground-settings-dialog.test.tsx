@@ -53,6 +53,19 @@ const memories: UserMemory[] = [
     created_at: 1,
     updated_at: 1,
   },
+  {
+    id: 8,
+    content: 'Luna remembers the user likes mysteries.',
+    keywords: 'luna,mystery',
+    category: 'preference',
+    importance: 0.7,
+    persona_id: 7,
+    conversation_id: 'chat-2',
+    source_key: 'source-2',
+    status: 'active',
+    created_at: 2,
+    updated_at: 2,
+  },
 ]
 
 beforeAll(() => {
@@ -94,6 +107,14 @@ beforeEach(() => {
       created_at: 0,
       updated_at: 0,
     },
+    {
+      id: 7,
+      name: 'Luna',
+      traits: 'Calm assistant',
+      is_default: false,
+      created_at: 1,
+      updated_at: 1,
+    },
   ])
   apiMocks.deleteUserMemory.mockResolvedValue(undefined)
   apiMocks.deleteAllUserMemories.mockResolvedValue(1)
@@ -116,9 +137,13 @@ test('lists saved memories with their category, importance, and updated time', a
 
   await user.click(screen.getByRole('tab', { name: 'Memory management' }))
   expect(await screen.findByText('Prefers concise answers.')).toBeVisible()
-  expect(screen.getByText('preference')).toBeVisible()
+  expect(screen.getByText('Luna')).toBeVisible()
+  expect(
+    screen.getByText('Luna remembers the user likes mysteries.')
+  ).toBeVisible()
+  expect(screen.getAllByText('preference')).toHaveLength(2)
   expect(screen.getByText(/Importance: 80%/)).toBeVisible()
-  expect(screen.getByText(/Updated:/)).toBeVisible()
+  expect(screen.getAllByText(/Updated:/)).toHaveLength(2)
 })
 
 test('allows deleting one memory after confirmation', async () => {
@@ -126,7 +151,11 @@ test('allows deleting one memory after confirmation', async () => {
   renderDialog()
 
   await user.click(screen.getByRole('tab', { name: 'Memory management' }))
-  await user.click(await screen.findByRole('button', { name: 'Delete memory' }))
+  await user.click(
+    await screen.findByRole('button', {
+      name: 'Delete memory: Prefers concise answers.',
+    })
+  )
   await user.click(screen.getByRole('button', { name: 'Delete' }))
 
   await waitFor(() => expect(apiMocks.deleteUserMemory).toHaveBeenCalledWith(7))
@@ -145,5 +174,20 @@ test('allows clearing every memory after confirmation', async () => {
 
   await waitFor(() =>
     expect(apiMocks.deleteAllUserMemories).toHaveBeenCalledOnce()
+  )
+})
+
+test('allows clearing memories for one persona without touching other personas', async () => {
+  const user = userEvent.setup()
+  renderDialog()
+
+  await user.click(screen.getByRole('tab', { name: 'Memory management' }))
+  await user.click(
+    await screen.findByRole('button', { name: 'Clear memories: Luna' })
+  )
+  await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+  await waitFor(() =>
+    expect(apiMocks.deleteAllUserMemories).toHaveBeenCalledWith(7)
   )
 })

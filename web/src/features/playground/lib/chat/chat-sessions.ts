@@ -35,6 +35,25 @@ function getMessageText(message: Message): string {
   return message.versions[0]?.content ?? ''
 }
 
+export function normalizeChatSessionRecency(session: ChatSession): ChatSession {
+  let latestMessageAt = 0
+  for (const message of session.messages) {
+    for (const timestamp of [
+      message.completedAt,
+      message.startedAt,
+      message.createdAt,
+    ]) {
+      if (typeof timestamp === 'number' && timestamp > latestMessageAt) {
+        latestMessageAt = timestamp
+      }
+    }
+  }
+  if (latestMessageAt === 0 || latestMessageAt === session.updatedAt) {
+    return session
+  }
+  return { ...session, updatedAt: latestMessageAt }
+}
+
 function toChatTitle(text: string): string {
   const normalized = text.replaceAll(/\s+/g, ' ').trim()
   if (normalized.length <= CHAT_TITLE_MAX_LENGTH) {
@@ -149,6 +168,8 @@ export function mergeChatSessions(
   localSessions: ChatSession[],
   serverSessions: ChatSession[]
 ): ChatSession[] {
+  localSessions = localSessions.map(normalizeChatSessionRecency)
+  serverSessions = serverSessions.map(normalizeChatSessionRecency)
   if (serverSessions.length === 0) return localSessions
 
   const serverLatest = Math.max(

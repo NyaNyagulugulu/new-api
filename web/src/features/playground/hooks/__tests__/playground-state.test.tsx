@@ -128,13 +128,14 @@ test('renaming a conversation does not change its latest-message time', async ()
   ])
   const { result } = renderHook(() => usePlaygroundState())
   await waitFor(() => expect(result.current.isLoadingMessages).toBe(false))
+  const updatedAtBeforeRename = result.current.sessions[0].updatedAt
 
   act(() => result.current.renameChat('chat-1', 'Renamed chat'))
 
   expect(result.current.sessions[0]).toMatchObject({
     id: 'chat-1',
     title: 'Renamed chat',
-    updatedAt: 200,
+    updatedAt: updatedAtBeforeRename,
   })
 })
 

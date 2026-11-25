@@ -228,6 +228,18 @@ func testUserMemoryDatabaseMatrix(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, personaMatches, 1)
 			assert.NotEqual(t, defaultMatches[0].Id, personaMatches[0].Id)
+
+			deleted, err = DeleteUserMemoriesForPersona(context.Background(), 1, persona.Id)
+			require.NoError(t, err)
+			assert.Equal(t, int64(1), deleted)
+			remaining, err := SearchUserMemories(context.Background(), 1, UserMemorySearchOptions{
+				Limit:         5,
+				MinImportance: 0.2,
+				RetentionDays: 365,
+			})
+			require.NoError(t, err)
+			require.Len(t, remaining, 1)
+			assert.Zero(t, remaining[0].PersonaId)
 		})
 	}
 }

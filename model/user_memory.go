@@ -439,3 +439,13 @@ func DeleteAllUserMemories(ctx context.Context, userId int) (int64, error) {
 		Delete(&UserMemory{})
 	return result.RowsAffected, result.Error
 }
+
+func DeleteUserMemoriesForPersona(ctx context.Context, userId int, personaId int64) (int64, error) {
+	if userId <= 0 || personaId < 0 {
+		return 0, fmt.Errorf("invalid memory scope")
+	}
+	result := DB.WithContext(ctx).
+		Where("user_id = ? AND persona_id = ?", userId, personaId).
+		Delete(&UserMemory{})
+	return result.RowsAffected, result.Error
+}

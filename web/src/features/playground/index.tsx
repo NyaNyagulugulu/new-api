@@ -140,6 +140,7 @@ export function Playground(props: PlaygroundProps) {
 
   useLongTermMemoryReflection({
     config,
+    isLoadingMessages,
     onUsage: handleMemoryUsage,
     sessions,
     settings: memorySettings,

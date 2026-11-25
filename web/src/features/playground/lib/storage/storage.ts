@@ -25,7 +25,10 @@ import type {
   ParameterEnabled,
   Message,
 } from '../../types'
-import { createChatSession } from '../chat/chat-sessions'
+import {
+  createChatSession,
+  normalizeChatSessionRecency,
+} from '../chat/chat-sessions'
 import {
   finalizeMessage,
   isAssistantMessagePending,
@@ -455,14 +458,16 @@ export function loadChatSessions(): ChatSession[] {
       const parsed = chatSessionsSchema.parse(
         unwrapStoredValue(saved)
       ) as ChatSession[]
-      const normalized = parsed.map((session) => ({
-        ...session,
-        messages: sanitizeMessagesOnLoad(
-          trimMessagesByContentSize(
-            trimMessages(session.messages.map(normalizeStoredMessageForLoad))
-          )
-        ),
-      }))
+      const normalized = parsed.map((session) =>
+        normalizeChatSessionRecency({
+          ...session,
+          messages: sanitizeMessagesOnLoad(
+            trimMessagesByContentSize(
+              trimMessages(session.messages.map(normalizeStoredMessageForLoad))
+            )
+          ),
+        })
+      )
 
       return trimChatSessionsByContentSize(trimChatSessions(normalized))
     }

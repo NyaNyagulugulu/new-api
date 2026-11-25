@@ -143,3 +143,28 @@ test('does not extract memories from conversation history loaded on open', () =>
   expect(apiMocks.sendChatCompletion).not.toHaveBeenCalled()
   expect(apiMocks.saveUserMemories).not.toHaveBeenCalled()
 })
+
+test('waits for the initial conversation load before establishing the memory baseline', () => {
+  const { rerender } = renderHook(
+    ({ isLoadingMessages, sessions }) =>
+      useLongTermMemoryReflection({
+        config: DEFAULT_CONFIG,
+        isLoadingMessages,
+        sessions,
+        settings,
+      }),
+    {
+      initialProps: {
+        isLoadingMessages: true,
+        sessions: [] as ChatSession[],
+      },
+    }
+  )
+
+  rerender({
+    isLoadingMessages: false,
+    sessions: [createSession('Existing answer', 'existing')],
+  })
+
+  expect(apiMocks.sendChatCompletion).not.toHaveBeenCalled()
+})

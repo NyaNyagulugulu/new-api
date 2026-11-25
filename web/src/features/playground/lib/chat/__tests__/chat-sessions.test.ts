@@ -24,6 +24,7 @@ import {
   getChatSessionTitle,
   groupChatSessionsByDate,
   mergeChatSessions,
+  normalizeChatSessionRecency,
 } from '../chat-sessions'
 
 const userMessage: Message = {
@@ -128,6 +129,23 @@ test('sessions with the same latest-message time keep a deterministic order', ()
     'alpha',
     'beta',
   ])
+})
+
+test('uses the latest message timestamp instead of a polluted session timestamp', () => {
+  const session = createSession('chat-1', 500, 'Polluted recency')
+  const normalized = normalizeChatSessionRecency({
+    ...session,
+    messages: [
+      {
+        ...userMessage,
+        createdAt: 100,
+        startedAt: 110,
+        completedAt: 120,
+      },
+    ],
+  })
+
+  expect(normalized.updatedAt).toBe(120)
 })
 
 test('server history wins while newer offline work is preserved', () => {

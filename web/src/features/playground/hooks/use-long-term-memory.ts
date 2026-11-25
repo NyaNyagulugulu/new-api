@@ -37,6 +37,7 @@ import type {
 
 type UseLongTermMemoryParams = {
   config: PlaygroundConfig
+  isLoadingMessages?: boolean
   onUsage?: (sessionId: string, messageKey: string, usage: MessageUsage) => void
   sessions: ChatSession[]
   settings?: MemorySettings
@@ -54,6 +55,7 @@ export function useMemorySettings() {
 
 export function useLongTermMemoryReflection({
   config,
+  isLoadingMessages = false,
   onUsage,
   sessions,
   settings,
@@ -64,6 +66,7 @@ export function useLongTermMemoryReflection({
   const initializedRef = useRef(false)
 
   useEffect(() => {
+    if (isLoadingMessages) return
     if (!settings?.enabled || !settings.auto_extract) return
 
     const counts = new Map<string, number>()
@@ -170,5 +173,12 @@ export function useLongTermMemoryReflection({
           activeSessionsRef.current = next
         })
     }
-  }, [config.group, config.model, onUsage, sessions, settings])
+  }, [
+    config.group,
+    config.model,
+    isLoadingMessages,
+    onUsage,
+    sessions,
+    settings,
+  ])
 }

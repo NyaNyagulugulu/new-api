@@ -53,6 +53,10 @@ export function PlaygroundSettingsDialog(props: PlaygroundSettingsDialogProps) {
   const { data: personas = [] } = usePersonas()
   const [deleteTarget, setDeleteTarget] = useState<UserMemory | null>(null)
   const [clearAllOpen, setClearAllOpen] = useState(false)
+  const [clearPersonaTarget, setClearPersonaTarget] = useState<{
+    id: number
+    name: string
+  } | null>(null)
   const memoriesQuery = useQuery({
     queryKey: MEMORY_QUERY_KEY,
     queryFn: getUserMemoryList,
@@ -67,17 +71,47 @@ export function PlaygroundSettingsDialog(props: PlaygroundSettingsDialogProps) {
     },
   })
   const clearAllMutation = useMutation({
-    mutationFn: deleteAllUserMemories,
+    mutationFn: () => deleteAllUserMemories(),
     onSuccess: () => {
       toast.success(t('All memories cleared'))
       setClearAllOpen(false)
       queryClient.setQueryData(MEMORY_QUERY_KEY, [])
     },
   })
+  const clearPersonaMutation = useMutation({
+    mutationFn: (personaId: number) => deleteAllUserMemories(personaId),
+    onSuccess: (_, personaId) => {
+      toast.success(t('All memories cleared'))
+      setClearPersonaTarget(null)
+      queryClient.setQueryData(MEMORY_QUERY_KEY, (current: UserMemory[] = []) =>
+        current.filter((memory) => memory.persona_id !== personaId)
+      )
+    },
+  })
 
   const memories = memoriesQuery.data ?? []
   const personasById = new Map(personas.map((persona) => [persona.id, persona]))
-  const isMutating = deleteMutation.isPending || clearAllMutation.isPending
+  const memoryGroups = personas
+    .map((persona) => ({
+      id: persona.id,
+      name: persona.id === 0 ? t('Default persona') : persona.name,
+      memories: memories.filter((memory) => memory.persona_id === persona.id),
+    }))
+    .filter((group) => group.memories.length > 0)
+  const unknownMemories = memories.filter(
+    (memory) => !personasById.has(memory.persona_id)
+  )
+  if (unknownMemories.length > 0) {
+    memoryGroups.push({
+      id: -1,
+      name: t('Unknown persona'),
+      memories: unknownMemories,
+    })
+  }
+  const isMutating =
+    deleteMutation.isPending ||
+    clearAllMutation.isPending ||
+    clearPersonaMutation.isPending
   let memoryList: React.ReactNode
   if (memoriesQuery.isPending) {
     memoryList = (
@@ -106,49 +140,74 @@ export function PlaygroundSettingsDialog(props: PlaygroundSettingsDialogProps) {
     )
   } else {
     memoryList = (
-      <div className='grid gap-2'>
-        {memories.map((memory) => (
-          <article
-            className='bg-background/60 rounded-xl border p-3'
-            key={memory.id}
-          >
-            <div className='flex items-start gap-2'>
-              <p className='min-w-0 flex-1 text-sm leading-6 break-words whitespace-pre-wrap'>
-                {memory.content}
-              </p>
-              <Button
-                aria-label={t('Delete memory')}
-                disabled={isMutating}
-                onClick={() => setDeleteTarget(memory)}
-                size='icon-sm'
-                type='button'
-                variant='ghost'
-              >
-                <Trash2Icon className='text-muted-foreground size-3.5' />
-              </Button>
-            </div>
-            <div className='text-muted-foreground mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]'>
-              {memory.category ? (
-                <span className='bg-muted rounded-md px-1.5 py-0.5'>
-                  {memory.category}
+      <div className='space-y-5'>
+        {memoryGroups.map((group) => (
+          <section className='space-y-2' key={group.id}>
+            <div className='flex items-center justify-between gap-3'>
+              <div className='flex min-w-0 items-center gap-2'>
+                <h3 className='truncate text-sm font-medium'>{group.name}</h3>
+                <span className='bg-muted text-muted-foreground rounded-md px-1.5 py-0.5 text-[11px]'>
+                  {group.memories.length}
                 </span>
+              </div>
+              {group.id >= 0 ? (
+                <Button
+                  aria-label={`${t('Clear memories')}: ${group.name}`}
+                  disabled={isMutating}
+                  onClick={() =>
+                    setClearPersonaTarget({
+                      id: group.id,
+                      name: group.name,
+                    })
+                  }
+                  size='sm'
+                  type='button'
+                  variant='outline'
+                >
+                  <Trash2Icon />
+                  {t('Clear memories')}
+                </Button>
               ) : null}
-              <span>
-                {t('Persona')}:{' '}
-                {memory.persona_id === 0
-                  ? t('Default persona')
-                  : (personasById.get(memory.persona_id)?.name ??
-                    t('Unknown persona'))}
-              </span>
-              <span>
-                {t('Importance')}: {Math.round(memory.importance * 100)}%
-              </span>
-              <span>
-                {t('Updated')}:{' '}
-                {dayjs(memory.updated_at).format('YYYY-MM-DD HH:mm')}
-              </span>
             </div>
-          </article>
+            <div className='grid gap-2'>
+              {group.memories.map((memory) => (
+                <article
+                  className='bg-background/60 rounded-xl border p-3'
+                  key={memory.id}
+                >
+                  <div className='flex items-start gap-2'>
+                    <p className='min-w-0 flex-1 text-sm leading-6 break-words whitespace-pre-wrap'>
+                      {memory.content}
+                    </p>
+                    <Button
+                      aria-label={`${t('Delete memory')}: ${memory.content}`}
+                      disabled={isMutating}
+                      onClick={() => setDeleteTarget(memory)}
+                      size='icon-sm'
+                      type='button'
+                      variant='ghost'
+                    >
+                      <Trash2Icon className='text-muted-foreground size-3.5' />
+                    </Button>
+                  </div>
+                  <div className='text-muted-foreground mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]'>
+                    {memory.category ? (
+                      <span className='bg-muted rounded-md px-1.5 py-0.5'>
+                        {memory.category}
+                      </span>
+                    ) : null}
+                    <span>
+                      {t('Importance')}: {Math.round(memory.importance * 100)}%
+                    </span>
+                    <span>
+                      {t('Updated')}:{' '}
+                      {dayjs(memory.updated_at).format('YYYY-MM-DD HH:mm')}
+                    </span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
         ))}
       </div>
     )
@@ -164,6 +223,7 @@ export function PlaygroundSettingsDialog(props: PlaygroundSettingsDialogProps) {
           if (!open) {
             setDeleteTarget(null)
             setClearAllOpen(false)
+            setClearPersonaTarget(null)
           }
           props.onOpenChange(open)
         }}
@@ -216,6 +276,26 @@ export function PlaygroundSettingsDialog(props: PlaygroundSettingsDialogProps) {
           </TabsContent>
         </Tabs>
       </Dialog>
+
+      <ConfirmDialog
+        destructive
+        desc={t(
+          'This will permanently delete all memories for {{name}}. This cannot be undone.',
+          { name: clearPersonaTarget?.name ?? '' }
+        )}
+        confirmText={t('Delete')}
+        handleConfirm={() => {
+          if (clearPersonaTarget) {
+            clearPersonaMutation.mutate(clearPersonaTarget.id)
+          }
+        }}
+        isLoading={clearPersonaMutation.isPending}
+        open={Boolean(clearPersonaTarget)}
+        onOpenChange={(open) => {
+          if (!open) setClearPersonaTarget(null)
+        }}
+        title={t('Clear persona memories?')}
+      />
 
       <ConfirmDialog
         destructive

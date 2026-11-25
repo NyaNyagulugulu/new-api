@@ -20,6 +20,7 @@ import { api } from '@/lib/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { API_ENDPOINTS } from './constants'
+import { normalizeChatSessionRecency } from './lib/chat/chat-sessions'
 import {
   parseWebSearchSources,
   parseWebSearchStatus,
@@ -173,10 +174,12 @@ function parseChatSessions(value: unknown): ChatSession[] {
   })
   const parsed = chatSessionsSchema.safeParse(sessions)
   return parsed.success
-    ? parsed.data.map((session) => ({
-        ...session,
-        messages: sanitizeMessagesOnLoad(session.messages),
-      }))
+    ? parsed.data.map((session) =>
+        normalizeChatSessionRecency({
+          ...session,
+          messages: sanitizeMessagesOnLoad(session.messages),
+        })
+      )
     : []
 }
 
@@ -294,8 +297,12 @@ export async function deleteUserMemory(id: number): Promise<void> {
   requireServerSuccess(res.data)
 }
 
-export async function deleteAllUserMemories(): Promise<number> {
-  const res = await api.delete(API_ENDPOINTS.MEMORIES)
+export async function deleteAllUserMemories(
+  personaId?: number
+): Promise<number> {
+  const res = await api.delete(API_ENDPOINTS.MEMORIES, {
+    params: personaId === undefined ? undefined : { persona_id: personaId },
+  })
   const data = requireServerSuccess(res.data)
   const deleted = data.data as { deleted?: unknown } | null
   return typeof deleted?.deleted === 'number' ? deleted.deleted : 0
