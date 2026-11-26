@@ -412,12 +412,15 @@ func (a *Adaptor) resolve(c *gin.Context, info *relaycommon.RelayInfo) error {
 
 func incomingRequestPath(c *gin.Context, info *relaycommon.RelayInfo) string {
 	if c != nil && c.Request != nil && c.Request.URL != nil {
+		if strings.HasPrefix(c.Request.URL.Path, "/pg/") && info != nil && strings.TrimSpace(info.RequestURLPath) != "" {
+			return strings.Split(info.RequestURLPath, "?")[0]
+		}
 		return c.Request.URL.Path
 	}
-	if info == nil {
-		return ""
+	if info != nil && strings.TrimSpace(info.RequestURLPath) != "" {
+		return strings.Split(info.RequestURLPath, "?")[0]
 	}
-	return strings.Split(info.RequestURLPath, "?")[0]
+	return ""
 }
 
 func (a *Adaptor) routeURL(info *relaycommon.RelayInfo) (string, error) {

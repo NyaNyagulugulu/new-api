@@ -242,6 +242,14 @@ func TestAdaptorReturnsErrorWhenNoRouteMatchesPath(t *testing.T) {
 	assert.Contains(t, err.Error(), "does not support request path")
 }
 
+func TestIncomingRequestPathUsesNormalizedPlaygroundPath(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/pg/chat/completions", nil)
+	info := &relaycommon.RelayInfo{RequestURLPath: "/v1/chat/completions"}
+
+	assert.Equal(t, "/v1/chat/completions", incomingRequestPath(c, info))
+}
+
 func TestAdaptorReplacesModelPlaceholderInRouteURL(t *testing.T) {
 	adaptor := &Adaptor{}
 	info := advancedCustomRelayInfo(&dto.AdvancedCustomConfig{
