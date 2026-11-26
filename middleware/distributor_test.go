@@ -30,6 +30,24 @@ func (streamedBodyStorage) Bytes() ([]byte, error) {
 	return nil, errors.New("disk body must be read through readers")
 }
 
+func TestConstraintRequestPathNormalizesPlaygroundRoutes(t *testing.T) {
+	tests := []struct {
+		path string
+		want string
+	}{
+		{path: "/v1/chat/completions", want: "/v1/chat/completions"},
+		{path: "/pg/chat/completions", want: "/v1/chat/completions"},
+		{path: "/pg/embeddings", want: "/v1/embeddings"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, tt.path, nil)
+			assert.Equal(t, tt.want, constraintRequestPath(c))
+		})
+	}
+}
+
 func TestJSONModelRoutingUsesReadersForDiskBodies(t *testing.T) {
 	previous := common.GetDiskCacheConfig()
 	t.Cleanup(func() { common.SetDiskCacheConfig(previous) })

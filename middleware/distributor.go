@@ -40,9 +40,10 @@ func Distribute() func(c *gin.Context) {
 			}
 		}()
 		constraints := service.GetChannelConstraints(c)
+		requestPath := constraintRequestPath(c)
 		constraints.AddFilter(taskdto.ChannelFilter{
 			Kind:        taskdto.FilterRequestPath,
-			RequestPath: c.Request.URL.Path,
+			RequestPath: requestPath,
 		})
 		service.AppendTaskPluginIdentityFilter(c, c.GetString("expected_task_plugin_key"))
 		modelRequest, shouldSelectChannel, err := getModelRequest(c)
@@ -113,7 +114,7 @@ func Distribute() func(c *gin.Context) {
 					Ctx:         c,
 					ModelName:   modelRequest.Model,
 					TokenGroup:  usingGroup,
-					RequestPath: c.Request.URL.Path,
+					RequestPath: requestPath,
 					Retry:       common.GetPointer(0),
 				})
 			}
@@ -138,6 +139,17 @@ func Distribute() func(c *gin.Context) {
 			service.RecordChannelAffinity(c, channel.Id)
 		}
 	}
+}
+
+func constraintRequestPath(c *gin.Context) string {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return ""
+	}
+	path := c.Request.URL.Path
+	if strings.HasPrefix(path, "/pg/") {
+		return "/v1" + strings.TrimPrefix(path, "/pg")
+	}
+	return path
 }
 
 // noAvailableChannelMessage explains a 503 for a task-plugin-claimed model.
