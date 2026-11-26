@@ -22,6 +22,7 @@ const (
 	responsesInputTypeFunctionCallOutput = "function_call_output"
 	responsesInputTypeCustomToolCall     = "custom_tool_call"
 	responsesInputTypeCustomToolOutput   = "custom_tool_call_output"
+	responsesInputTypeReasoning          = "reasoning"
 )
 
 const (
@@ -220,6 +221,12 @@ func responsesInputItemToChatMessages(ctx context.Context, item map[string]any, 
 		callID := strings.TrimSpace(kitutil.Interface2String(item["call_id"]))
 		content, media := responsesToolOutputToChat(ctx, item["output"])
 		return append(messages, dto.Message{Role: "tool", ToolCallId: callID, Content: content}), media, nil
+	case responsesInputTypeReasoning:
+		reasoning := responsesInputReasoningText(item)
+		if reasoning == "" {
+			return messages, nil, nil
+		}
+		return append(messages, dto.Message{Role: "assistant", ReasoningContent: &reasoning}), nil, nil
 	}
 
 	role := strings.TrimSpace(kitutil.Interface2String(item["role"]))
@@ -231,6 +238,32 @@ func responsesInputItemToChatMessages(ctx context.Context, item map[string]any, 
 		return nil, nil, err
 	}
 	return append(messages, dto.Message{Role: role, Content: content}), nil, nil
+}
+
+func responsesInputReasoningText(item map[string]any) string {
+	var text strings.Builder
+	if parts, ok := item["content"].([]any); ok {
+		for _, rawPart := range parts {
+			part, ok := rawPart.(map[string]any)
+			if !ok || strings.TrimSpace(kitutil.Interface2String(part["type"])) != "reasoning_text" {
+				continue
+			}
+			appendSeparatedText(&text, kitutil.Interface2String(part["text"]))
+		}
+	}
+	if text.Len() > 0 {
+		return text.String()
+	}
+	if parts, ok := item["summary"].([]any); ok {
+		for _, rawPart := range parts {
+			part, ok := rawPart.(map[string]any)
+			if !ok || strings.TrimSpace(kitutil.Interface2String(part["type"])) != "summary_text" {
+				continue
+			}
+			appendSeparatedText(&text, kitutil.Interface2String(part["text"]))
+		}
+	}
+	return text.String()
 }
 
 func responsesInputContentToChatContent(ctx context.Context, content any) (any, error) {

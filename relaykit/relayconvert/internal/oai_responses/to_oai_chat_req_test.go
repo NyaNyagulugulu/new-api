@@ -162,6 +162,44 @@ func TestResponsesRequestToChatCompletionsRequestAssistantTextAndFunctionCallCoe
 	assert.JSONEq(t, `{"ok":true}`, got.Messages[1].StringContent())
 }
 
+func TestResponsesRequestToChatCompletionsRequestReasoningItemBecomesAssistantReasoning(t *testing.T) {
+	got, err := ResponsesRequestToChatCompletionsRequest(context.Background(), &dto.OpenAIResponsesRequest{
+		Model: "gpt-test",
+		Input: mustRawMessage(t, []map[string]any{
+			{
+				"type": "reasoning",
+				"content": []map[string]any{
+					{"type": "reasoning_text", "text": "inspect first"},
+				},
+				"encrypted_content": "encrypted",
+			},
+			{
+				"type":      "function_call",
+				"call_id":   "call_1",
+				"name":      "lookup",
+				"arguments": `{"q":"x"}`,
+			},
+			{
+				"type":    "function_call_output",
+				"call_id": "call_1",
+				"output":  "ok",
+			},
+		}),
+	})
+	require.NoError(t, err)
+
+	require.Len(t, got.Messages, 2)
+	assert.Equal(t, "assistant", got.Messages[0].Role)
+	assert.Nil(t, got.Messages[0].Content)
+	assert.Equal(t, "inspect first", got.Messages[0].GetReasoningContent())
+	toolCalls := got.Messages[0].ParseToolCalls()
+	require.Len(t, toolCalls, 1)
+	assert.Equal(t, "call_1", toolCalls[0].ID)
+	assert.Equal(t, "lookup", toolCalls[0].Function.Name)
+	assert.JSONEq(t, `{"q":"x"}`, toolCalls[0].Function.Arguments)
+	assert.Equal(t, dto.Message{Role: "tool", ToolCallId: "call_1", Content: "ok"}, got.Messages[1])
+}
+
 func TestResponsesRequestToChatCompletionsRequestOnlyFunctionCallCreatesAssistant(t *testing.T) {
 	got, err := ResponsesRequestToChatCompletionsRequest(context.Background(), &dto.OpenAIResponsesRequest{
 		Model: "gpt-test",
